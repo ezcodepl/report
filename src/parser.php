@@ -1,15 +1,16 @@
 <?php
 
 /**
- * Klasa RaportParser
- * Wersja rozszerzona:
- * - obsługa list (<ul><li>)
- * - zabezpieczenia nullsafe
- * - czyszczenie danych
- * - pomijanie komentarzy:
- *   - HTML <!-- komentarz -->
- *   - linie // komentarz
+ * Parser raportów HTML
+ * Kompatybilny z index.php
+ * Obsługuje:
+ * - komentarze HTML <!-- -->
+ * - komentarze //
+ * - listy <li>
+ * - multiline
+ * - widok skanowania
  */
+
 class RaportParser {
 
     private $filePath;
@@ -19,6 +20,7 @@ class RaportParser {
     }
 
     public function parse() {
+
         if (!$this->filePath || !file_exists($this->filePath)) {
             return $this->getEmptyResponse();
         }
@@ -29,14 +31,14 @@ class RaportParser {
             return $this->getEmptyResponse();
         }
 
-        // =========================
+        // ====================================
         // USUWANIE KOMENTARZY
-        // =========================
+        // ====================================
 
-        // 1. Usuń komentarze HTML <!-- -->
+        // <!-- komentarz -->
         $htmlContent = preg_replace('/<!--.*?-->/s', '', $htmlContent);
 
-        // 2. Usuń linie zaczynające się od //
+        // // komentarz
         $htmlContent = preg_replace('/^\s*\/\/.*$/m', '', $htmlContent);
 
         libxml_use_internal_errors(true);
@@ -52,10 +54,13 @@ class RaportParser {
 
         $xpath = new DOMXPath($dom);
 
-        // Szukamy wierszy z danymi
         $rows = $xpath->query('//tr[contains(@class, "table_tbody")]');
 
         $results = [];
+
+        $totalEvents = 0;
+
+        $uniqueIps = [];
 
         foreach ($rows as $row) {
 
@@ -65,48 +70,118 @@ class RaportParser {
                 continue;
             }
 
+            $sourceIp = trim($cells->item(0)->textContent);
+
+            $destIps = $this->extractComplexList(
+                $cells->item(6)
+            );
+
+            $countries = $this->extractComplexList(
+                $cells->item(8)
+            );
+
+            $services = $this->extractComplexList(
+                $cells->item(9)
+            );
+
+            $eventsCount = count($destIps);
+
+            $totalEvents += $eventsCount;
+
+            $uniqueIps[$sourceIp] = true;
+
             $results[] = [
-                'source_ip' => trim($cells->item(0)->textContent),
 
-                'bytes_rx' => $this->cleanValue(
-                    $cells->item(1)->textContent
-                ),
+                'source_country' =>
+                    $countries[0] ?? 'Unknown',
 
-                'bytes_tx' => $this->cleanValue(
-                    $cells->item(2)->textContent
-                ),
+                'source_ip' =>
+                    $sourceIp,
 
-                'bytes_tot' => $this->cleanValue(
-                    $cells->item(3)->textContent
-                ),
+                'dest_ip' =>
+                    implode("\n", $destIps),
 
-                'dest_ips' => $this->extractComplexList(
-                    $cells->item(6)
-                ),
+                'dest_port' =>
+                    'N/A',
 
-                'countries' => $this->extractComplexList(
-                    $cells->item(8)
-                ),
+                'events_count' =>
+                    $eventsCount,
 
-                'services' => $this->extractComplexList(
-                    $cells->item(9)
-                )
+                'danger_level' =>
+                    $this->calculateDangerLevel($eventsCount),
+
+                'application' =>
+                    $services[0] ?? 'Unknown',
+
+                'protocol' =>
+                    'TCP',
+
+                'service' =>
+                    $services[0] ?? 'Unknown',
+
+                'event_info' =>
+                    'Network activity detected',
+
+                'event_desc' =>
+                    'Automatically parsed from HTML report',
+
+                'abuse_url' =>
+                    'https://www.abuseipdb.com/check/' .
+                    urlencode($sourceIp),
+
+                'virustotal_url' =>
+                    'https://www.virustotal.com/gui/ip-address/' .
+                    urlencode($sourceIp),
+
+                'whois_url' =>
+                    'https://www.whois.com/whois/' .
+                    urlencode($sourceIp)
             ];
         }
 
+        // ====================================
+        // NAJBARDZIEJ AKTYWNE IP
+        // ====================================
+
+        $topIp = 'N/A';
+
+        $maxEvents = 0;
+
+        foreach ($results as $r) {
+
+            if ($r['events_count'] > $maxEvents) {
+
+                $maxEvents = $r['events_count'];
+
+                $topIp = $r['source_ip'];
+            }
+        }
+
         return [
-            'top_hosts' => $results,
+
+            'scans' => $results,
+
             'meta' => [
-                'timestamp' => time()
+
+                'timestamp' => time(),
+
+                'suma_zdarzen' =>
+                    $totalEvents,
+
+                'unikalne_ip' =>
+                    count($uniqueIps),
+
+                'najbardziej_aktywny_ip' =>
+                    $topIp,
+
+                'urzadzenie' =>
+                    'Firewall'
             ]
         ];
     }
 
     /**
-     * Wyciąga dane z TD
-     * Obsługuje:
-     * - <li>
-     * - wielolinijkowy tekst
+     * Obsługa list i multiline
      */
     private function extractComplexList($tdNode) {
 
@@ -114,7 +189,7 @@ class RaportParser {
             return [];
         }
 
-        // Jeśli są <li>
+        // <li>
         if ($tdNode->getElementsByTagName('li')->length > 0) {
             return $this->getListItems($tdNode);
         }
@@ -127,59 +202,88 @@ class RaportParser {
 
         $lines = preg_split('/\r\n|\r|\n/', $text);
 
-        return array_values(
-            array_filter(
-                array_map('trim', $lines)
-            )
-        );
-    }
-
-    private function getListItems($tdNode) {
-
-        if (!$tdNode) {
-            return [];
-        }
-
-        $listItems = $tdNode->getElementsByTagName('li');
-
-        if ($listItems->length > 0) {
-
-            $items = [];
-
-            foreach ($listItems as $li) {
-
-                $text = trim($li->textContent);
-
-                if (!empty($text)) {
-                    $items[] = $text;
-                }
-            }
-
-            return $items;
-        }
-
-        $text = trim($tdNode->textContent);
-
-        if (empty($text)) {
-            return [];
-        }
-
-        $lines = preg_split('/\r\n|\r|\n/', $text);
-
-        $cleanLines = [];
+        $clean = [];
 
         foreach ($lines as $line) {
 
             $line = trim($line);
 
             if (!empty($line)) {
-                $cleanLines[] = $line;
+                $clean[] = $line;
             }
         }
 
-        return $cleanLines;
+        return array_values($clean);
     }
 
+    /**
+     * Pobieranie <li>
+     */
+    private function getListItems($tdNode) {
+
+        if (!$tdNode) {
+            return [];
+        }
+
+        $items = [];
+
+        $listItems = $tdNode->getElementsByTagName('li');
+
+        foreach ($listItems as $li) {
+
+            $text = trim($li->textContent);
+
+            if (!empty($text)) {
+                $items[] = $text;
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * Wyliczanie poziomu zagrożenia
+     */
+    private function calculateDangerLevel($events) {
+
+        if ($events >= 20) {
+            return 'Critical';
+        }
+
+        if ($events >= 10) {
+            return 'High';
+        }
+
+        if ($events >= 5) {
+            return 'Medium';
+        }
+
+        return 'Low';
+    }
+
+    /**
+     * Flagi państw
+     */
+    public function getCountryFlag($country) {
+
+        $flags = [
+
+            'Poland' => '🇵🇱',
+            'Germany' => '🇩🇪',
+            'France' => '🇫🇷',
+            'United States' => '🇺🇸',
+            'China' => '🇨🇳',
+            'Russia' => '🇷🇺',
+            'Ukraine' => '🇺🇦',
+            'Unknown' => '🌍'
+        ];
+
+        return $flags[$country] ?? '🌍';
+    }
+
+    /**
+     * Czyszczenie wartości
+     */
     private function cleanValue($text) {
 
         return preg_replace(
@@ -193,12 +297,26 @@ class RaportParser {
         );
     }
 
+    /**
+     * Empty response
+     */
     private function getEmptyResponse() {
 
         return [
-            'top_hosts' => [],
+
+            'scans' => [],
+
             'meta' => [
-                'timestamp' => time()
+
+                'timestamp' => time(),
+
+                'suma_zdarzen' => 0,
+
+                'unikalne_ip' => 0,
+
+                'najbardziej_aktywny_ip' => 'N/A',
+
+                'urzadzenie' => 'Firewall'
             ]
         ];
     }
