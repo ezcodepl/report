@@ -695,27 +695,59 @@ if ($selectedFile) {
                         </div>
                     </div>
 
-                    <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-                        <h3 class="text-base font-bold text-slate-950 mb-4">Rozkład czasowy zdarzeń (Aktywność dobowo-godzinowa)</h3>
-                        <div class="grid grid-cols-4 gap-3 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12">
-                            <?php foreach ($parsedData['rozkład_godzinowy'] as $godzina):
-                                $logCount = intval($godzina['logi']);
-                                $bgClass = 'bg-blue-50/40 text-blue-900 border-blue-100/30';
-                                if ($logCount > 90) {
-                                    $bgClass = 'bg-blue-600 text-white font-bold border-blue-700';
-                                } elseif ($logCount > 60) {
-                                    $bgClass = 'bg-blue-400 text-white border-blue-500';
-                                } elseif ($logCount > 30) {
-                                    $bgClass = 'bg-blue-100 text-blue-900 border-blue-200';
-                                }
-                            ?>
-                                <div class="rounded-xl p-3 text-center border shadow-3xs flex flex-col justify-between items-center min-h-[75px] <?php echo $bgClass; ?>">
-                                    <span class="text-[9px] font-semibold uppercase tracking-wider opacity-85"><?php echo $godzina['godzina']; ?></span>
-                                    <span class="text-xs font-bold mt-1"><?php echo htmlspecialchars($godzina['logi']); ?> zd.</span>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
+                    <?php
+$maxLogi = max(array_column($parsedData['rozkład_godzinowy'], 'logi'));
+?>
+
+<div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+    <h3 class="text-base font-bold text-slate-950 mb-4">
+        Rozkład czasowy zdarzeń (Aktywność dobowo-godzinowa)
+    </h3>
+
+    <div class="grid grid-cols-4 gap-3 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12">
+
+        <?php foreach ($parsedData['rozkład_godzinowy'] as $godzina):
+
+            $logCount = intval($godzina['logi']);
+
+            // procent względem największej wartości
+            $intensity = $maxLogi > 0
+                ? ($logCount / $maxLogi) * 100
+                : 0;
+
+            // dynamiczne klasy
+            if ($intensity >= 85) {
+                $bgClass = 'bg-blue-900 text-white border-blue-950';
+            } elseif ($intensity >= 70) {
+                $bgClass = 'bg-blue-700 text-white border-blue-800';
+            } elseif ($intensity >= 50) {
+                $bgClass = 'bg-blue-500 text-white border-blue-600';
+            } elseif ($intensity >= 30) {
+                $bgClass = 'bg-blue-300 text-blue-950 border-blue-400';
+            } elseif ($intensity >= 15) {
+                $bgClass = 'bg-blue-100 text-blue-900 border-blue-200';
+            } else {
+                $bgClass = 'bg-slate-50 text-slate-500 border-slate-200';
+            }
+
+        ?>
+
+            <div class="rounded-xl p-3 text-center border shadow-sm transition-all duration-200 hover:scale-105 flex flex-col justify-between items-center min-h-[75px] <?php echo $bgClass; ?>">
+
+                <span class="text-[9px] font-semibold uppercase tracking-wider opacity-85">
+                    <?php echo $godzina['godzina']; ?>
+                </span>
+
+                <span class="text-xs font-bold mt-1">
+                    <?php echo htmlspecialchars($godzina['logi']); ?> zd.
+                </span>
+
+            </div>
+
+        <?php endforeach; ?>
+
+    </div>
+</div>
 
                 <?php else: ?>
                     <!-- ========================================== -->

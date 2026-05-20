@@ -491,7 +491,7 @@ private function buildHours()
         $logi = rand(1, 15);
 
         $hours[] = [
-            'godzina' => date('m-d H:i', strtotime("+$i hour")),
+            'godzina' => date('Y-m-d H:i:s', strtotime("+$i hour")),
             'logi' => $logi
         ];
     }
