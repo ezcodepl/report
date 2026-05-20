@@ -319,28 +319,28 @@ if ($selectedFile) {
                                     <p class="text-xs text-slate-400 font-semibold py-4 text-center">Brak danych</p>
                                 <?php else: ?>
                                     <?php foreach ($top5Hosts as $h):
-									
+									    
                                         $currentMb = convertToMb($h['suma'] ?? 0);
 
 													$percent = $maxHostTransfer > 0
 														? min(100, ($currentMb / $maxHostTransfer) * 100)
 														: 0;
 
-													$ip = $h['ip'] ?? 'unknown';
+													$ip =trim(preg_replace('/\s*\([^)]*\)/', '', $h['ip'] ?? '')) ?? 'unknown';
 													$opis = $h['opis'] ?? '';
-
+                                                    //echo $h['opis'];
 													$displayName = $ip;
 
 													if (!empty($opis) &&
 														$opis !== 'Brak nazwy (DHCP)' &&
 														$opis !== 'Urządzenie DHCP'
 													) {
-														$displayName .= " ($opis)";
+														$opis;
 													}
                                     ?>
                                         <div>
                                             <div class="flex justify-between text-xs font-semibold text-slate-700 mb-1">
-                                                <span class="font-mono text-slate-900 truncate max-w-[150px] inline-block" title="<?php echo htmlspecialchars($displayName?? ''); ?>"><?php echo htmlspecialchars($displayName); ?></span>
+                                                <span class="font-mono text-slate-900 truncate max-w-[150px] inline-block" title="<?php echo htmlspecialchars($displayName?? ''); ?>"><?php echo htmlspecialchars($displayName); ?></span><span><?php echo htmlspecialchars($opis); ?></span></span>
                                                 <span class="text-blue-600 font-bold"><?php echo htmlspecialchars($h['suma']?? 0); ?></span>
                                             </div>
                                             <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden">

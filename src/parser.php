@@ -56,12 +56,21 @@ class RaportParser {
             if ($cells->length < 10) {
                 continue;
             }
+            // DEBUG
+   
 
             $ip = trim($cells->item(0)->textContent);
 
             $rx = (float)$this->cleanValue($cells->item(1)->textContent);
             $tx = (float)$this->cleanValue($cells->item(2)->textContent);
             $total = (float)$this->cleanValue($cells->item(3)->textContent);
+            
+            $hostnameRaw = trim($cells->item(5)->textContent);
+            $hostname = preg_replace('/\s*\([0-9]+\)$/', '', $hostnameRaw);
+
+            if (empty($hostname)) {
+                $hostname = 'Brak nazwy (DHCP)';
+            }
 
             $events = rand(100, 30000);
 
@@ -80,7 +89,7 @@ class RaportParser {
 
                 'ip' => $ip,
 
-                'opis' => 'Brak nazwy (DHCP)',
+                'opis' => $hostname,
 
                 'zdarzenia' => number_format($events, 0, ' ', ' '),
 
