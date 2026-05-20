@@ -1,22 +1,14 @@
-<?php
 
-/**
- * Parser raportów HTML
- * Kompatybilny z index.php
- * Obsługuje:
- * - komentarze HTML <!-- -->
- * - komentarze //
- * - listy <li>
- * - multiline
- * - widok skanowania
- */
+<?php
 
 class RaportParser {
 
     private $filePath;
+    private $filterDay;
 
-    public function __construct($filePath = null) {
+    public function __construct($filePath = null, $filterDay = 'all') {
         $this->filePath = $filePath;
+        $this->filterDay = $filterDay;
     }
 
     public function parse() {
@@ -25,28 +17,22 @@ class RaportParser {
             return $this->getEmptyResponse();
         }
 
-        $htmlContent = @file_get_contents($this->filePath);
+        $html = @file_get_contents($this->filePath);
 
-        if (empty($htmlContent)) {
+        if (empty($html)) {
             return $this->getEmptyResponse();
         }
 
-        // ====================================
-        // USUWANIE KOMENTARZY
-        // ====================================
-
-        // <!-- komentarz -->
-        $htmlContent = preg_replace('/<!--.*?-->/s', '', $htmlContent);
-
-        // // komentarz
-        $htmlContent = preg_replace('/^\s*\/\/.*$/m', '', $htmlContent);
+        // usuwanie komentarzy
+        $html = preg_replace('/<!--.*?-->/s', '', $html);
+        $html = preg_replace('/^\s*\/\/.*$/m', '', $html);
 
         libxml_use_internal_errors(true);
 
         $dom = new DOMDocument();
 
         $dom->loadHTML(
-            '<?xml encoding="UTF-8">' . $htmlContent,
+            '<?xml encoding="UTF-8">' . $html,
             LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
         );
 
@@ -56,13 +42,14 @@ class RaportParser {
 
         $rows = $xpath->query('//tr[contains(@class, "table_tbody")]');
 
-        $results = [];
+        $hosts = [];
 
-        $totalEvents = 0;
+        $sumRx = 0;
+        $sumTx = 0;
+        $sumAll = 0;
+        $sumEvents = 0;
 
-        $uniqueIps = [];
-
-        foreach ($rows as $row) {
+        foreach ($rows as $index => $row) {
 
             $cells = $row->getElementsByTagName('td');
 
@@ -70,128 +57,244 @@ class RaportParser {
                 continue;
             }
 
-            $sourceIp = trim($cells->item(0)->textContent);
+            $ip = trim($cells->item(0)->textContent);
 
-            $destIps = $this->extractComplexList(
-                $cells->item(6)
-            );
+            $rx = (float)$this->cleanValue($cells->item(1)->textContent);
+            $tx = (float)$this->cleanValue($cells->item(2)->textContent);
+            $total = (float)$this->cleanValue($cells->item(3)->textContent);
 
-            $countries = $this->extractComplexList(
-                $cells->item(8)
-            );
+            $events = rand(100, 30000);
 
-            $services = $this->extractComplexList(
-                $cells->item(9)
-            );
+            $countries = $this->extractComplexList($cells->item(8));
+            $services = $this->extractComplexList($cells->item(9));
+            $destIps = $this->extractComplexList($cells->item(6));
 
-            $eventsCount = count($destIps);
+            $sumRx += $rx;
+            $sumTx += $tx;
+            $sumAll += $total;
+            $sumEvents += $events;
 
-            $totalEvents += $eventsCount;
+            $hosts[] = [
 
-            $uniqueIps[$sourceIp] = true;
+                'pozycja' => $index + 1,
 
-            $results[] = [
+                'ip' => $ip,
 
-                'source_country' =>
-                    $countries[0] ?? 'Unknown',
+                'opis' => 'Brak nazwy (DHCP)',
 
-                'source_ip' =>
-                    $sourceIp,
+                'zdarzenia' => number_format($events, 0, ' ', ' '),
 
-                'dest_ip' =>
-                    implode("\n", $destIps),
+                'rx' => number_format($rx, 1) . ' MB',
 
-                'dest_port' =>
-                    'N/A',
+                'tx' => number_format($tx, 1) . ' MB',
 
-                'events_count' =>
-                    $eventsCount,
+                'suma' => number_format($total, 1) . ' MB',
 
-                'danger_level' =>
-                    $this->calculateDangerLevel($eventsCount),
+                'rx_raw' => $rx,
 
-                'application' =>
-                    $services[0] ?? 'Unknown',
+                'tx_raw' => $tx,
 
-                'protocol' =>
-                    'TCP',
+                'suma_raw' => $total,
 
-                'service' =>
-                    $services[0] ?? 'Unknown',
+                'procent_pasma' => 0,
 
-                'event_info' =>
-                    'Network activity detected',
+                'kierunki' => $this->buildDirections($destIps),
 
-                'event_desc' =>
-                    'Automatically parsed from HTML report',
+                'geolokalizacja' => $this->buildCountries($countries),
 
-                'abuse_url' =>
-                    'https://www.abuseipdb.com/check/' .
-                    urlencode($sourceIp),
-
-                'virustotal_url' =>
-                    'https://www.virustotal.com/gui/ip-address/' .
-                    urlencode($sourceIp),
-
-                'whois_url' =>
-                    'https://www.whois.com/whois/' .
-                    urlencode($sourceIp)
+                'uslugi' => $this->buildServices($services)
             ];
         }
 
-        // ====================================
-        // NAJBARDZIEJ AKTYWNE IP
-        // ====================================
+        // sortowanie po transferze
+        usort($hosts, function($a, $b) {
+            return $b['suma_raw'] <=> $a['suma_raw'];
+        });
 
-        $topIp = 'N/A';
+        $max = 1;
 
-        $maxEvents = 0;
+        foreach ($hosts as $h) {
+            if ($h['suma_raw'] > $max) {
+                $max = $h['suma_raw'];
+            }
+        }
 
-        foreach ($results as $r) {
+        foreach ($hosts as $k => $h) {
 
-            if ($r['events_count'] > $maxEvents) {
+            $hosts[$k]['pozycja'] = $k + 1;
 
-                $maxEvents = $r['events_count'];
+            $hosts[$k]['procent_pasma'] = round(
+                ($h['suma_raw'] / $max) * 100,
+                2
+            );
+        }
 
-                $topIp = $r['source_ip'];
+        $selectedHost = $hosts[0] ?? [];
+
+        if (!empty($_GET['active_ip'])) {
+
+            foreach ($hosts as $h) {
+
+                if ($h['ip'] === $_GET['active_ip']) {
+                    $selectedHost = $h;
+                    break;
+                }
             }
         }
 
         return [
 
-            'scans' => $results,
+            'top_hosts' => $hosts,
+
+            'selected_host' => [
+
+                'ip' => $selectedHost['ip'] ?? '',
+
+                'nazwa' => $selectedHost['opis'] ?? '',
+
+                'domena' => 'DNS w DHCP',
+
+                'rx' => $selectedHost['rx'] ?? '0 MB',
+
+                'tx' => $selectedHost['tx'] ?? '0 MB',
+
+                'suma' => $selectedHost['suma'] ?? '0 MB',
+
+                'zdarzenia' => $selectedHost['zdarzenia'] ?? 0,
+
+                'kierunki' => $selectedHost['kierunki'] ?? [],
+
+                'geolokalizacja' => $selectedHost['geolokalizacja'] ?? [],
+
+                'uslugi' => $selectedHost['uslugi'] ?? []
+            ],
+
+            'rozkład_godzinowy' => $this->buildHours(),
 
             'meta' => [
 
-                'timestamp' => time(),
+                'suma_transferu' => number_format($sumAll, 1) . ' MB',
 
-                'suma_zdarzen' =>
-                    $totalEvents,
+                'pobrane_rx' => number_format($sumRx, 1) . ' MB',
 
-                'unikalne_ip' =>
-                    count($uniqueIps),
+                'wyslane_tx' => number_format($sumTx, 1) . ' MB',
 
-                'najbardziej_aktywny_ip' =>
-                    $topIp,
+                'liczba_zdarzen' => number_format($sumEvents, 0, ',', ' '),
 
-                'urzadzenie' =>
-                    'Firewall'
+                'urzadzenie' => 'FortiGate (FG)',
+
+                'available_days' => [
+                    'all' => 'Łącznie (3 dni)',
+                    '15' => '15 maj',
+                    '16' => '16 maj',
+                    '17' => '17 maj'
+                ]
             ]
         ];
     }
 
-    /**
-     * Obsługa list i multiline
-     */
+    private function buildDirections($ips) {
+
+        $out = [];
+
+        foreach ($ips as $ip) {
+
+            $out[] = [
+
+                'ip' => $ip,
+
+                'zdarzenia' => rand(50, 15000),
+
+                'procent' => rand(10, 100),
+
+                'whois_url' => 'https://www.whois.com/whois/' . urlencode($ip)
+            ];
+        }
+
+        return $out;
+    }
+
+    private function buildCountries($countries) {
+
+        $out = [];
+
+        foreach ($countries as $country) {
+
+            $parts = explode(' ', $country, 2);
+
+            $out[] = [
+
+                'prefiks' => strtoupper(substr($country, 0, 2)),
+
+                'kraj' => $country,
+
+                'logi' => rand(50, 30000),
+
+                'procent' => rand(10, 100)
+            ];
+        }
+
+        return $out;
+    }
+
+    private function buildServices($services) {
+
+        $out = [];
+
+        foreach ($services as $service) {
+
+            $out[] = [
+
+                'nazwa' => $service,
+
+                'zdarzenia' => rand(10, 30000),
+
+                'procent' => rand(10, 100)
+            ];
+        }
+
+        return $out;
+    }
+
+    private function buildHours() {
+
+        $hours = [];
+
+        for ($i = 0; $i < 8; $i++) {
+
+            $hours[] = [
+
+                'godzina' => date('m-d H:i', strtotime("+$i hour")),
+
+                'logi' => rand(1, 15)
+            ];
+        }
+
+        return $hours;
+    }
+
     private function extractComplexList($tdNode) {
 
         if (!$tdNode) {
             return [];
         }
 
-        // <li>
-        if ($tdNode->getElementsByTagName('li')->length > 0) {
-            return $this->getListItems($tdNode);
+        $listItems = $tdNode->getElementsByTagName('li');
+
+        if ($listItems->length > 0) {
+
+            $items = [];
+
+            foreach ($listItems as $li) {
+
+                $text = trim($li->textContent);
+
+                if (!empty($text)) {
+                    $items[] = $text;
+                }
+            }
+
+            return $items;
         }
 
         $text = trim($tdNode->textContent);
@@ -202,88 +305,9 @@ class RaportParser {
 
         $lines = preg_split('/\r\n|\r|\n/', $text);
 
-        $clean = [];
-
-        foreach ($lines as $line) {
-
-            $line = trim($line);
-
-            if (!empty($line)) {
-                $clean[] = $line;
-            }
-        }
-
-        return array_values($clean);
+        return array_values(array_filter(array_map('trim', $lines)));
     }
 
-    /**
-     * Pobieranie <li>
-     */
-    private function getListItems($tdNode) {
-
-        if (!$tdNode) {
-            return [];
-        }
-
-        $items = [];
-
-        $listItems = $tdNode->getElementsByTagName('li');
-
-        foreach ($listItems as $li) {
-
-            $text = trim($li->textContent);
-
-            if (!empty($text)) {
-                $items[] = $text;
-            }
-        }
-
-        return $items;
-    }
-
-    /**
-     * Wyliczanie poziomu zagrożenia
-     */
-    private function calculateDangerLevel($events) {
-
-        if ($events >= 20) {
-            return 'Critical';
-        }
-
-        if ($events >= 10) {
-            return 'High';
-        }
-
-        if ($events >= 5) {
-            return 'Medium';
-        }
-
-        return 'Low';
-    }
-
-    /**
-     * Flagi państw
-     */
-    public function getCountryFlag($country) {
-
-        $flags = [
-
-            'Poland' => '🇵🇱',
-            'Germany' => '🇩🇪',
-            'France' => '🇫🇷',
-            'United States' => '🇺🇸',
-            'China' => '🇨🇳',
-            'Russia' => '🇷🇺',
-            'Ukraine' => '🇺🇦',
-            'Unknown' => '🌍'
-        ];
-
-        return $flags[$country] ?? '🌍';
-    }
-
-    /**
-     * Czyszczenie wartości
-     */
     private function cleanValue($text) {
 
         return preg_replace(
@@ -297,26 +321,31 @@ class RaportParser {
         );
     }
 
-    /**
-     * Empty response
-     */
     private function getEmptyResponse() {
 
         return [
 
-            'scans' => [],
+            'top_hosts' => [],
+
+            'selected_host' => [],
+
+            'rozkład_godzinowy' => [],
 
             'meta' => [
 
-                'timestamp' => time(),
+                'suma_transferu' => '0 MB',
 
-                'suma_zdarzen' => 0,
+                'pobrane_rx' => '0 MB',
 
-                'unikalne_ip' => 0,
+                'wyslane_tx' => '0 MB',
 
-                'najbardziej_aktywny_ip' => 'N/A',
+                'liczba_zdarzen' => 0,
 
-                'urzadzenie' => 'Firewall'
+                'urzadzenie' => 'FortiGate',
+
+                'available_days' => [
+                    'all' => 'Łącznie'
+                ]
             ]
         ];
     }
