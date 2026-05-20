@@ -76,6 +76,7 @@ class RaportParser {
 
             $countries = $this->extractComplexList($cells->item(8));
             $services = $this->extractComplexList($cells->item(9));
+            $apps = $this->extractComplexList($cells->item(10));
             $destIps = $this->extractComplexList($cells->item(6));
 
             $sumRx += $rx;
@@ -111,7 +112,9 @@ class RaportParser {
 
                 'geolokalizacja' => $this->buildCountries($countries),
 
-                'uslugi' => $this->buildServices($services)
+                'uslugi' => $this->buildServices($services),
+                
+                'aplikacje' => $this->buildServices($apps)
             ];
         }
 
@@ -175,7 +178,9 @@ class RaportParser {
 
                 'geolokalizacja' => $selectedHost['geolokalizacja'] ?? [],
 
-                'uslugi' => $selectedHost['uslugi'] ?? []
+                'uslugi' => $selectedHost['uslugi'] ?? [],
+
+                'aplikacje' => $selectedHost['aplikacje'] ?? []
             ],
 
             'rozkład_godzinowy' => $this->buildHours(),
@@ -202,134 +207,345 @@ class RaportParser {
         ];
     }
 
-    private function buildDirections($ips) {
+//     private function buildDirections($ips) {
 
-        $out = [];
+//         $out = [];
 
-        foreach ($ips as $ip) {
+//         foreach ($ips as $ip) {
 
-            $out[] = [
+//             $out[] = [
 
-                'ip' => $ip,
+//                 'ip' => $ip,
 
-                'zdarzenia' => rand(50, 15000),
+//                 'zdarzenia' => rand(50, 15000),
 
-                'procent' => rand(10, 100),
+//                 'procent' => rand(10, 100),
 
-                'whois_url' => 'https://www.whois.com/whois/' . urlencode($ip)
-            ];
-        }
+//                 'whois_url' => 'https://www.whois.com/whois/' . urlencode($ip)
+//             ];
+//         }
 
-        return $out;
-    }
+//         return $out;
+//     }
 
-    private function buildCountries($countries) {
+//     private function buildCountries($countries) {
 
-        $out = [];
+//         $out = [];
 
-        foreach ($countries as $country) {
+//         foreach ($countries as $country) {
 
-            $parts = explode(' ', $country, 2);
+//             $parts = explode(' ', $country, 2);
 
-            $out[] = [
+//             $out[] = [
 
-                'prefiks' => strtoupper(substr($country, 0, 2)),
+//                 'prefiks' => strtoupper(substr($country, 0, 2)),
 
-                'kraj' => $country,
+//                 'kraj' => $country,
 
-                'logi' => rand(50, 30000),
+//                 'logi' => rand(50, 30000),
 
-                'procent' => rand(10, 100)
-            ];
-        }
+//                 'procent' => rand(10, 100)
+//             ];
+//         }
 
-        return $out;
-    }
+//         return $out;
+//     }
+// private function buildServices($services)
+// {
+//     $out = [];
 
-    private function buildServices($services) {
+//     foreach ($services as $service) {
 
-        $out = [];
+//         preg_match('/^(.*?)\s*\((\d+)\)$/', $service, $match);
 
-        foreach ($services as $service) {
+//         $nazwa = trim($match[1] ?? $service);
+//         $zdarzenia = (int)($match[2] ?? 0);
 
-            $out[] = [
+//         $out[] = [
+//             'nazwa' => $nazwa,
+//             'zdarzenia' => $zdarzenia
+//         ];
+//     }
 
-                'nazwa' => $service,
+//     // suma wszystkich zdarzeń
+//     $total = array_sum(array_column($out, 'zdarzenia'));
 
-                'zdarzenia' => rand(10, 30000),
+//     // procenty
+//     foreach ($out as &$item) {
+//         $item['procent'] = $total > 0
+//             ? round(($item['zdarzenia'] / $total) * 100, 1)
+//             : 0;
+//     }
 
-                'procent' => rand(10, 100)
-            ];
-        }
+//     // sortowanie malejąco
+//     usort($out, function ($a, $b) {
+//         return $b['zdarzenia'] <=> $a['zdarzenia'];
+//     });
 
-        return $out;
-    }
+//     return $out;
+// }
 
-    private function buildHours() {
+//     private function buildHours() {
 
-        $hours = [];
+//         $hours = [];
 
-        for ($i = 0; $i < 8; $i++) {
+//         for ($i = 0; $i < 8; $i++) {
 
-            $hours[] = [
+//             $hours[] = [
 
-                'godzina' => date('m-d H:i', strtotime("+$i hour")),
+//                 'godzina' => date('m-d H:i', strtotime("+$i hour")),
 
-                'logi' => rand(1, 15)
-            ];
-        }
+//                 'logi' => rand(1, 15)
+//             ];
+//         }
 
-        return $hours;
-    }
+//         return $hours;
+//     }
 
-    private function extractComplexList($tdNode) {
+//     private function extractComplexList($tdNode) {
 
-        if (!$tdNode) {
-            return [];
-        }
+//         if (!$tdNode) {
+//             return [];
+//         }
 
-        $listItems = $tdNode->getElementsByTagName('li');
+//         $listItems = $tdNode->getElementsByTagName('li');
 
-        if ($listItems->length > 0) {
+//         if ($listItems->length > 0) {
 
-            $items = [];
+//             $items = [];
 
-            foreach ($listItems as $li) {
+//             foreach ($listItems as $li) {
 
-                $text = trim($li->textContent);
+//                 $text = trim($li->textContent);
 
-                if (!empty($text)) {
-                    $items[] = $text;
-                }
-            }
+//                 if (!empty($text)) {
+//                     $items[] = $text;
+//                 }
+//             }
 
-            return $items;
-        }
+//             return $items;
+//         }
 
-        $text = trim($tdNode->textContent);
+//         $text = trim($tdNode->textContent);
 
-        if (empty($text)) {
-            return [];
-        }
+//         if (empty($text)) {
+//             return [];
+//         }
 
-        $lines = preg_split('/\r\n|\r|\n/', $text);
+//         $lines = preg_split('/\r\n|\r|\n/', $text);
 
-        return array_values(array_filter(array_map('trim', $lines)));
-    }
+//         return array_values(array_filter(array_map('trim', $lines)));
+//     }
 
-    private function cleanValue($text) {
+//     private function cleanValue($text) {
 
-        return preg_replace(
-            '/[^0-9.]/',
-            '',
-            str_ireplace(
-                [' mb', ' gb', ' kb', ' bytes', ' '],
-                '',
-                $text
+//         return preg_replace(
+//             '/[^0-9.]/',
+//             '',
+//             str_ireplace(
+//                 [' mb', ' gb', ' kb', ' bytes', ' '],
+//                 '',
+//                 $text
+//             )
+//         );
+//     }
+private function buildDirections($ips)
+{
+    $out = [];
+
+    foreach ($ips as $ipEntry) {
+
+        // np. 192.168.1.1 (1234)
+        preg_match('/^(.*?)\s*\((\d+)\)$/', trim($ipEntry), $match);
+
+        $ip = trim($match[1] ?? $ipEntry);
+        $zdarzenia = (int)($match[2] ?? 0);
+
+        // typ ruchu
+        if (
+            filter_var(
+                $ip,
+                FILTER_VALIDATE_IP,
+                FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
             )
-        );
+        ) {
+            $typ = 'zew.';
+        } else {
+            $typ = 'wew.';
+        }
+
+        $out[] = [
+            'ip' => $ip,
+            'typ' => $typ,
+            'zdarzenia' => $zdarzenia,
+            'whois_url' => 'https://www.whois.com/whois/' . urlencode($ip)
+        ];
     }
 
+    // suma zdarzeń
+    $total = array_sum(array_column($out, 'zdarzenia'));
+
+    // procenty
+    foreach ($out as &$item) {
+
+        $item['procent'] = $total > 0
+            ? round(($item['zdarzenia'] / $total) * 100, 1)
+            : 0;
+    }
+
+    unset($item);
+
+    // sortowanie malejąco
+    usort($out, function ($a, $b) {
+        return $b['zdarzenia'] <=> $a['zdarzenia'];
+    });
+
+    return $out;
+}
+
+private function buildCountries($countries)
+{
+    $out = [];
+
+    foreach ($countries as $countryEntry) {
+
+        // np. Poland (1234)
+        preg_match('/^(.*?)\s*\((\d+)\)$/', trim($countryEntry), $match);
+
+        $kraj = trim($match[1] ?? $countryEntry);
+        $logi = (int)($match[2] ?? 0);
+
+        $out[] = [
+            'prefiks' => strtoupper(substr($kraj, 0, 2)),
+            'kraj' => $kraj,
+            'logi' => $logi
+        ];
+    }
+
+    // suma logów
+    $total = array_sum(array_column($out, 'logi'));
+
+    // procenty
+    foreach ($out as &$item) {
+
+        $item['procent'] = $total > 0
+            ? round(($item['logi'] / $total) * 100, 1)
+            : 0;
+    }
+
+    unset($item);
+
+    // sortowanie malejąco
+    usort($out, function ($a, $b) {
+        return $b['logi'] <=> $a['logi'];
+    });
+
+    return $out;
+}
+
+private function buildServices($services)
+{
+    $out = [];
+
+    foreach ($services as $service) {
+
+        // np. SSL (1276)
+        preg_match('/^(.*?)\s*\((\d+)\)$/', trim($service), $match);
+
+        $nazwa = trim($match[1] ?? $service);
+        $zdarzenia = (int)($match[2] ?? 0);
+
+        $out[] = [
+            'nazwa' => $nazwa,
+            'zdarzenia' => $zdarzenia
+        ];
+    }
+
+    // suma wszystkich zdarzeń
+    $total = array_sum(array_column($out, 'zdarzenia'));
+
+    // procenty
+    foreach ($out as &$item) {
+
+        $item['procent'] = $total > 0
+            ? round(($item['zdarzenia'] / $total) * 100, 1)
+            : 0;
+    }
+
+    unset($item);
+
+    // sortowanie malejąco
+    usort($out, function ($a, $b) {
+        return $b['zdarzenia'] <=> $a['zdarzenia'];
+    });
+
+    return $out;
+}
+
+private function buildHours()
+{
+    $hours = [];
+
+    for ($i = 0; $i < 8; $i++) {
+
+        $logi = rand(1, 15);
+
+        $hours[] = [
+            'godzina' => date('m-d H:i', strtotime("+$i hour")),
+            'logi' => $logi
+        ];
+    }
+
+    return $hours;
+}
+
+private function extractComplexList($tdNode)
+{
+    if (!$tdNode) {
+        return [];
+    }
+
+    $listItems = $tdNode->getElementsByTagName('li');
+
+    if ($listItems->length > 0) {
+
+        $items = [];
+
+        foreach ($listItems as $li) {
+
+            $text = trim($li->textContent);
+
+            if (!empty($text)) {
+                $items[] = $text;
+            }
+        }
+
+        return $items;
+    }
+
+    $text = trim($tdNode->textContent);
+
+    if (empty($text)) {
+        return [];
+    }
+
+    $lines = preg_split('/\r\n|\r|\n/', $text);
+
+    return array_values(array_filter(array_map('trim', $lines)));
+}
+
+private function cleanValue($text)
+{
+    return preg_replace(
+        '/[^0-9.]/',
+        '',
+        str_ireplace(
+            [' mb', ' gb', ' kb', ' bytes', ' '],
+            '',
+            $text
+        )
+    );
+}
     private function getEmptyResponse() {
 
         return [

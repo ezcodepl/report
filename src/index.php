@@ -308,6 +308,7 @@ if ($selectedFile) {
                             <div class="space-y-4">
                                 <?php
                                 $top5Hosts = array_slice($parsedData['top_hosts'], 0, 5);
+                                //print_r($top5Hosts);
 								
                                 $maxHostTransfer = 0.001;
                                 foreach ($top5Hosts as $h) {
@@ -613,6 +614,29 @@ if ($selectedFile) {
                                         <?php endforeach; ?>
                                     <?php endif; ?>
                                 </div>
+                                <div class="border-t border-slate-100 pt-4 font-sans ">
+                                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-3 font-sans font-medium pt-32">Rozpoznane Aplikacje</span>
+                                    <div class="space-y-3 font-sans">
+                                        <?php if (empty($parsedData['selected_host']['aplikacje'])): ?>
+                                            <div class="flex flex-col items-center justify-center py-6 text-slate-400 border border-dashed border-slate-150 rounded-2xl bg-slate-50/50">
+                                                <i data-lucide="layers" class="h-8 w-8 mb-2 opacity-60"></i>
+                                                <span class="text-xs font-semibold font-sans">Brak danych</span>
+                                            </div>
+                                        <?php else: ?>
+                                            <?php foreach ($parsedData['selected_host']['aplikacje'] as $usluga): ?>
+                                                <div>
+                                                    <div class="flex justify-between text-xs font-semibold mb-1 font-sans">
+                                                        <span class="rounded bg-slate-100 px-2 py-0.5 font-bold text-slate-700 font-mono text-[11px]"><?php echo htmlspecialchars($usluga['nazwa']); ?></span>
+                                                        <span class="text-slate-600 font-bold"><?php echo htmlspecialchars($usluga['zdarzenia']); ?></span>
+                                                    </div>
+                                                    <div class="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                                                        <div class="h-full bg-gradient-to-r from-amber-500 to-orange-600 rounded-full transition-all duration-500" style="width: <?php echo $usluga['procent']; ?>%"></div>
+                                                    </div>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- GEOLOKALIZACJA I USŁUGI (PROTOKOŁY) -->
@@ -636,7 +660,7 @@ if ($selectedFile) {
                                                         <span class="text-slate-800 font-bold"><?php echo htmlspecialchars($krajData['logi']); ?></span>
                                                     </div>
                                                     <div class="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
-                                                        <div class="h-full bg-indigo-600 rounded-full" style="width: <?php echo $krajData['procent']; ?>%"></div>
+                                                        <div class="h-full bg-gradient-to-r from-rose-500 to-red-600 rounded-full transition-all duration-500" style="width: <?php echo $krajData['procent']; ?>%"></div>
                                                     </div>
                                                 </div>
                                             <?php endforeach; ?>
