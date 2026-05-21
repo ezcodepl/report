@@ -25,7 +25,7 @@ class RaportParser {
 
         return number_format($mb, 1) . ' MB';
     }
-
+  
     public function parse() {
 
         if (!$this->filePath || !file_exists($this->filePath)) {
@@ -187,25 +187,22 @@ class RaportParser {
             'selected_host' => [
 
                 'ip' => $selectedHost['ip'] ?? '',
-
                 'nazwa' => $selectedHost['opis'] ?? '',
-
                 'domena' => 'DNS w DHCP',
 
-                'suma_transferu' => $this->formatTransfer($sumAll),
+                // HOST LEVEL
+                'rx' => $selectedHost['rx'] ?? '0 MB',
+                'tx' => $selectedHost['tx'] ?? '0 MB',
+                'suma' => $selectedHost['suma'] ?? '0 MB',
 
-                'pobrane_rx' => $this->formatTransfer($sumRx),
-
-                'wyslane_tx' => $this->formatTransfer($sumTx),
+                'rx_raw' => $selectedHost['rx_raw'] ?? 0,
+                'tx_raw' => $selectedHost['tx_raw'] ?? 0,
 
                 'zdarzenia' => $selectedHost['zdarzenia'] ?? 0,
 
                 'kierunki' => $selectedHost['kierunki'] ?? [],
-
                 'geolokalizacja' => $selectedHost['geolokalizacja'] ?? [],
-
                 'uslugi' => $selectedHost['uslugi'] ?? [],
-
                 'aplikacje' => $selectedHost['aplikacje'] ?? []
             ],
 
@@ -386,6 +383,8 @@ private function buildDirections($ips)
 
         $ip = trim($match[1] ?? $ipEntry);
         $zdarzenia = (int)($match[2] ?? 0);
+        
+    
 
         // typ ruchu
         if (
@@ -404,7 +403,8 @@ private function buildDirections($ips)
             'ip' => $ip,
             'typ' => $typ,
             'zdarzenia' => $zdarzenia,
-            'whois_url' => 'https://www.whois.com/whois/' . urlencode($ip)
+            'whois_url' => 'https://www.whois.com/whois/' . urlencode($ip),
+            
         ];
     }
 

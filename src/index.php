@@ -371,7 +371,10 @@ if ($selectedFile) {
                                     <?php foreach ($top5Kierunki as $k): ?>
                                         <div>
                                             <div class="flex justify-between text-xs font-semibold text-slate-700 mb-1">
-                                                <span class="font-mono text-blue-600"><?php echo htmlspecialchars($k['ip']); ?></span>
+                                                 <a href="<?php echo $k['whois_url']; ?>" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline flex items-center gap-1">
+                                                        <?php echo htmlspecialchars($k['ip']);  ?>
+                                                        <i data-lucide="external-link" class="h-3 w-3 opacity-60"></i>
+                                                    </a>
                                                 <span class="text-emerald-600 font-bold"><?php echo htmlspecialchars($k['zdarzenia']); ?></span>
                                             </div>
                                             <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
@@ -585,12 +588,27 @@ if ($selectedFile) {
                                                     </span>
 
                                                     <span class="text-emerald-600 font-bold">
-                                                        <?php echo htmlspecialchars($parsedData['selected_host']['pobrane_rx'] ?? '0 MB'); ?>
+                                                        <?php echo number_format($parsedData['selected_host']['rx_raw'], 1) . ' MB';  ?>
                                                     </span>
                                                 </div>
+                                                    <?php
+                                                        $rx = (float)($parsedData['selected_host']['rx_raw'] ?? 0);
+                                                        $tx = (float)($parsedData['selected_host']['tx_raw'] ?? 0);
+                                                        
+                                                        $total = $rx + $tx;
 
+                                                        
+                                                        $total = $total > 0 ? $total : 1;
+
+                                                        $rxPercent = ($rx / $total) * 100;
+                                                        $txPercent = ($tx / $total) * 100;
+                                                        echo $rxPercent;
+                                                        ?>
+                                                        
                                                 <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                                                    <div class="h-full bg-emerald-500 rounded-full" style="width: 85%"></div>
+                                                     <div class="h-full bg-emerald-500 rounded-full"
+                                                    style="width: <?php echo round($rxPercent, 1); ?>%">
+                                                </div>
                                                 </div>
                                             </div>
 
@@ -603,12 +621,12 @@ if ($selectedFile) {
                                                     </span>
 
                                                     <span class="text-amber-600 font-bold">
-                                                        <?php echo htmlspecialchars($parsedData['selected_host']['wyslane_tx'] ?? '0 MB'); ?>
+                                                        <?php echo number_format($parsedData['selected_host']['tx_raw'], 1) . ' MB'; ?>
                                                     </span>
                                                 </div>
 
                                                 <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                                                    <div class="h-full bg-amber-500 rounded-full" style="width: 15%"></div>
+                                                    <div class="h-full bg-amber-500 rounded-full" style="width: <?php echo round($txPercent, 1); ?>%"></div>
                                                 </div>
                                             </div>
 
@@ -617,11 +635,11 @@ if ($selectedFile) {
 
                                     <!-- META -->
                                     <div class="mt-6 pt-4 border-t border-slate-100 text-xs text-slate-500 space-y-2">
-
+                                          
                                                     <div class="flex justify-between">
                                                         <span>Suma transferu:</span>
                                                         <span class="font-bold text-slate-800">
-                                                            <?php echo htmlspecialchars($parsedData['selected_host']['suma_transferu'] ?? '0 MB'); ?>
+                                                            <?php echo htmlspecialchars($parsedData['selected_host']['suma'] ?? '0 MB'); ?>
                                                         </span>
                                                     </div>
 
