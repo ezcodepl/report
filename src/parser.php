@@ -11,6 +11,21 @@ class RaportParser {
         $this->filterDay = $filterDay;
     }
 
+    private function formatTransfer($mb)
+    {
+        $mb = (float)$mb;
+
+        if ($mb >= 1000000) {
+            return number_format($mb / 1000000, 2) . ' TB';
+        }
+
+        if ($mb >= 1000) {
+            return number_format($mb / 1000, 2) . ' GB';
+        }
+
+        return number_format($mb, 1) . ' MB';
+    }
+
     public function parse() {
 
         if (!$this->filePath || !file_exists($this->filePath)) {
@@ -72,7 +87,17 @@ class RaportParser {
                 $hostname = 'Brak nazwy (DHCP)';
             }
 
-            $events = rand(100, 30000);
+           $ipRaw = trim(html_entity_decode($cells->item(0)->textContent));
+
+            preg_match('/^(.*?)\s*\(([0-9 ,]+)\)/', $ipRaw, $match);
+
+            $ip = trim($match[1] ?? $ipRaw);
+
+            $events = (int)str_replace(
+                [' ', ','],
+                '',
+                $match[2] ?? '0'
+            );
 
             $countries = $this->extractComplexList($cells->item(8));
             $services = $this->extractComplexList($cells->item(9));
@@ -94,11 +119,11 @@ class RaportParser {
 
                 'zdarzenia' => number_format($events, 0, ' ', ' '),
 
-                'rx' => number_format($rx, 1) . ' MB',
+                'rx' => $this->formatTransfer($rx),
 
-                'tx' => number_format($tx, 1) . ' MB',
+                'tx' => $this->formatTransfer($tx),
 
-                'suma' => number_format($total, 1) . ' MB',
+                'suma' => $this->formatTransfer($total),
 
                 'rx_raw' => $rx,
 
@@ -153,6 +178,7 @@ class RaportParser {
                 }
             }
         }
+        
 
         return [
 
@@ -166,11 +192,11 @@ class RaportParser {
 
                 'domena' => 'DNS w DHCP',
 
-                'rx' => $selectedHost['rx'] ?? '0 MB',
+                'suma_transferu' => $this->formatTransfer($sumAll),
 
-                'tx' => $selectedHost['tx'] ?? '0 MB',
+                'pobrane_rx' => $this->formatTransfer($sumRx),
 
-                'suma' => $selectedHost['suma'] ?? '0 MB',
+                'wyslane_tx' => $this->formatTransfer($sumTx),
 
                 'zdarzenia' => $selectedHost['zdarzenia'] ?? 0,
 
@@ -534,18 +560,41 @@ private function extractComplexList($tdNode)
     return array_values(array_filter(array_map('trim', $lines)));
 }
 
+// private function cleanValue($text)
+// {
+//     return preg_replace(
+//         '/[^0-9.]/',
+//         '',
+//         str_ireplace(
+//             [' mb', ' gb', ' kb', ' bytes', ' '],
+//             '',
+//             $text
+//         )
+//     );
+// }
 private function cleanValue($text)
 {
-    return preg_replace(
-        '/[^0-9.]/',
-        '',
-        str_ireplace(
-            [' mb', ' gb', ' kb', ' bytes', ' '],
-            '',
-            $text
-        )
-    );
+    $text = strtolower(trim($text));
+
+    $value = (float)preg_replace('/[^0-9.]/', '', $text);
+
+    if (str_contains($text, 'tb')) {
+        return $value * 1000000;
+    }
+
+    if (str_contains($text, 'gb')) {
+        return $value * 1000;
+    }
+
+    if (str_contains($text, 'kb')) {
+        return $value / 1000;
+    }
+
+    return $value; // MB domyślnie
 }
+
+
+
     private function getEmptyResponse() {
 
         return [
