@@ -65,8 +65,9 @@ class RaportParser {
         $sumEvents = 0;
 
         foreach ($rows as $index => $row) {
-
+             $events = []; 
             $cells = $row->getElementsByTagName('td');
+            
 
             if ($cells->length < 10) {
                 continue;
@@ -93,7 +94,7 @@ class RaportParser {
 
             $ip = trim($match[1] ?? $ipRaw);
 
-            $events = (int)str_replace(
+            $eventCount = (int)str_replace(
                 [' ', ','],
                 '',
                 $match[2] ?? '0'
@@ -103,11 +104,36 @@ class RaportParser {
             $services = $this->extractComplexList($cells->item(9));
             $apps = $this->extractComplexList($cells->item(10));
             $destIps = $this->extractComplexList($cells->item(6));
+            $timeGenerated = $this->extractComplexList($cells->item(12));
+             
+
+           
+
+            foreach ($timeGenerated as $timeEntry) {
+
+                $timeEntry = trim(preg_replace('/\s+/', ' ', $timeEntry));
+
+                preg_match(
+                    '/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*?\((\d+)\)/',
+                    $timeEntry,
+                    $timeMatch
+                );
+
+                $time = trim($timeMatch[1] ?? '');
+                $count = (int)($timeMatch[2] ?? 1);
+
+                for ($i = 0; $i < $count; $i++) {
+
+                    $events[] = [
+                        'time' => $time
+                    ];
+                }
+            }
 
             $sumRx += $rx;
             $sumTx += $tx;
             $sumAll += $total;
-            $sumEvents += $events;
+            $sumEvents += $eventCount;
 
             $hosts[] = [
 
@@ -117,7 +143,7 @@ class RaportParser {
 
                 'opis' => $hostname,
 
-                'zdarzenia' => number_format($events, 0, ' ', ' '),
+                 'zdarzenia' => $eventCount, //'zdarzenia' => number_format($eventCount, 0, ' ', ' '),
 
                 'rx' => $this->formatTransfer($rx),
 
@@ -136,8 +162,13 @@ class RaportParser {
                 'kierunki' => $this->buildDirections($destIps),
 
                 'geolokalizacja' => $this->buildCountries($countries),
+                'time_raw' => $this->extractComplexList($cells->item(12)),
+                'rozkład_godzinowy' => $this->buildHours($selectedHost['events'] ?? []),
+
+                'events' => $events,
 
                 'uslugi' => $this->buildServices($services),
+                
                 
                 'aplikacje' => $this->buildServices($apps)
             ];
@@ -167,6 +198,12 @@ class RaportParser {
         }
 
         $selectedHost = $hosts[0] ?? [];
+//         echo '<pre>';
+// var_dump($selectedHost['events'] ?? null);
+// echo '</pre>';
+// $test = $this->buildHours($selectedHost['events'] ?? []);
+// var_dump($test);
+// exit;
 
         if (!empty($_GET['active_ip'])) {
 
@@ -203,10 +240,12 @@ class RaportParser {
                 'kierunki' => $selectedHost['kierunki'] ?? [],
                 'geolokalizacja' => $selectedHost['geolokalizacja'] ?? [],
                 'uslugi' => $selectedHost['uslugi'] ?? [],
+                'time_raw' => $selectedHost['time_raw'] ?? [],
+                'rozkład_godzinowy' => $this->buildHours($selectedHost['events'] ?? []),
                 'aplikacje' => $selectedHost['aplikacje'] ?? []
             ],
 
-            'rozkład_godzinowy' => $this->buildHours(),
+           
 
             'meta' => [
 
@@ -228,6 +267,7 @@ class RaportParser {
                 ]
             ]
         ];
+        
     }
 
 //     private function buildDirections($ips) {
@@ -508,22 +548,58 @@ private function buildServices($services)
     return $out;
 }
 
-private function buildHours()
+private function buildHours($events)
 {
-    $hours = [];
+    $hours = array_fill(0, 24, 0);
 
-    for ($i = 0; $i < 8; $i++) {
+    foreach ($events as $event) {
 
-        $logi = rand(1, 15);
+        if (empty($event['time'])) continue;
 
-        $hours[] = [
-            'godzina' => date('Y-m-d H:i:s', strtotime("+$i hour")),
-            'logi' => $logi
+        $timestamp = strtotime(trim($event['time']));
+
+        if (!$timestamp) continue;
+
+        $hour = (int)date('H', $timestamp);
+
+        $hours[$hour]++;
+    }
+
+    $out = [];
+
+    foreach ($hours as $h => $count) {
+        $out[] = [
+            'godzina' => sprintf('%02d:00', $h),
+            'logi' => $count
         ];
     }
 
-    return $hours;
+    return $out;
 }
+// private function buildHours($events)
+// {
+//     $hours = array_fill(0, 24, 0);
+
+//     foreach ($events as $event) {
+
+//         if (empty($event['time'])) continue;
+
+//         $hour = (int)date('H', strtotime($event['time']));
+
+//         $hours[$hour]++;
+//     }
+
+//     $out = [];
+
+//     foreach ($hours as $h => $count) {
+//         $out[] = [
+//             'godzina' => sprintf('%02d:00', $h),
+//             'logi' => $count
+//         ];
+//     }
+
+//     return $out;
+// }
 
 private function extractComplexList($tdNode)
 {
@@ -560,18 +636,7 @@ private function extractComplexList($tdNode)
     return array_values(array_filter(array_map('trim', $lines)));
 }
 
-// private function cleanValue($text)
-// {
-//     return preg_replace(
-//         '/[^0-9.]/',
-//         '',
-//         str_ireplace(
-//             [' mb', ' gb', ' kb', ' bytes', ' '],
-//             '',
-//             $text
-//         )
-//     );
-// }
+
 private function cleanValue($text)
 {
     $text = strtolower(trim($text));
