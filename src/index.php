@@ -602,7 +602,7 @@ if ($selectedFile) {
 
                                                         $rxPercent = ($rx / $total) * 100;
                                                         $txPercent = ($tx / $total) * 100;
-                                                        echo $rxPercent;
+                                                        
                                                         ?>
                                                         
                                                 <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
