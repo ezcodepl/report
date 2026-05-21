@@ -213,11 +213,11 @@ class RaportParser {
 
             'meta' => [
 
-                'suma_transferu' => number_format($sumAll, 1) . ' MB',
+                'suma_transferu' => $this->formatTransfer($sumAll),
 
-                'pobrane_rx' => number_format($sumRx, 1) . ' MB',
+                'pobrane_rx' => $this->formatTransfer($sumRx),
 
-                'wyslane_tx' => number_format($sumTx, 1) . ' MB',
+                'wyslane_tx' => $this->formatTransfer($sumTx),
 
                 'liczba_zdarzen' => number_format($sumEvents, 0, ',', ' '),
 
