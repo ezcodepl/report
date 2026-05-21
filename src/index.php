@@ -456,16 +456,16 @@ if ($selectedFile) {
                                 </h3>
                                 <p class="text-xs text-slate-400 mt-1">Lista najaktywniejszych adresów IP na podstawie dobowego transferu danych. Domyślnie prezentowane jest Top 5.</p>
                             </div>
-
-                            <!-- INTERAKTYWNA SEKCJA WYBORU DNI RAPORTU -->
-                            <div class="inline-flex rounded-xl bg-slate-100 p-1 text-xs font-bold shadow-xs">
-                                <?php foreach ($parsedData['meta']['available_days'] as $dayKey => $dayLabel): ?>
-                                    <a href="index.php?file=<?php echo urlencode($selectedFile); ?>&filter_day=<?php echo urlencode($dayKey); ?>&active_ip=<?php echo urlencode($activeIp); ?>"
-                                       class="rounded-lg px-3 py-1.5 transition-all <?php echo $filterDay === $dayKey ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'; ?>">
-                                        <?php echo htmlspecialchars($dayLabel); ?>
+                            <!-- 
+                            INTERAKTYWNA SEKCJA WYBORU DNI RAPORTU
+                          <div class="inline-flex rounded-xl bg-slate-100 p-1 text-xs font-bold shadow-xs">
+                                <?php //foreach ($parsedData['meta']['available_days'] as $dayKey => $dayLabel): ?>
+                                    <a href="index.php?file=<?php //echo urlencode($selectedFile); ?>&filter_day=<?php //echo urlencode($dayKey); ?>&active_ip=<?php //echo urlencode($activeIp); ?>"
+                                       class="rounded-lg px-3 py-1.5 transition-all <?php //echo $filterDay === $dayKey ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'; ?>">
+                                        <?php //echo htmlspecialchars($dayLabel); ?>
                                     </a>
-                                <?php endforeach; ?>
-                            </div>
+                                <?php //endforeach; ?> 
+                            </div>-->
                         </div>
 
                         <div class="overflow-x-auto font-sans">
@@ -539,46 +539,109 @@ if ($selectedFile) {
                         <div class="grid grid-cols-1 gap-8 lg:grid-cols-3">
                             <!-- IDENTYFIKACJA HOSTA I ROZKŁAD POBIERANIA/WYSYŁANIA -->
                             <div class="lg:border-r lg:border-slate-100 lg:pr-8 flex flex-col justify-between font-sans">
-                                <div>
-                                    <div class="flex items-center justify-between">
-                                        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Identyfikacja Hosta</span>
-                                        <span class="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-600 font-sans">Lokalny IP</span>
-                                    </div>
-                                    <div class="mt-3">
-                                        <h4 class="text-2xl font-bold text-slate-900 font-mono"><?php echo htmlspecialchars($parsedData['selected_host']['ip'] ?? ''); ?></h4>
-                                        <p class="text-xs font-bold text-slate-600 mt-0.5"><?php echo htmlspecialchars($parsedData['selected_host']['nazwa'] ?? ''); ?></p>
-                                        <span class="text-xs text-slate-400"><?php echo htmlspecialchars($parsedData['selected_host']['domena'] ?? ''); ?></span>
-                                    </div>
-                                </div>
+                                <div class="space-y-5">
 
-                                <div class="mt-6">
-                                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-3 font-sans">Rozkład pobierania i wysyłania</span>
-                                    <div class="space-y-4">
-                                        <div>
-                                            <div class="flex justify-between text-xs font-semibold mb-1">
-                                                <span class="flex items-center gap-2 text-slate-600"><span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span> Pobieranie (Rx)</span>
-                                                <span class="text-emerald-600 font-bold"><?php echo htmlspecialchars($parsedData['selected_host']['rx'] ?? '0 MB'); ?></span>
-                                            </div>
-                                            <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                                                <div class="h-full bg-emerald-500 rounded-full" style="width: 85%"></div>
-                                            </div>
+                                    <!-- HOST -->
+                                    <div class="leading-tight">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                                Identyfikacja Hosta
+                                            </span>
+
+                                            <span class="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600 font-sans">
+                                                Lokalny IP
+                                            </span>
                                         </div>
-                                        <div>
-                                            <div class="flex justify-between text-xs font-semibold mb-1">
-                                                <span class="flex items-center gap-2 text-slate-600"><span class="h-2.5 w-2.5 rounded-full bg-amber-500"></span> Wysyłanie (Tx)</span>
-                                                <span class="text-amber-600 font-bold"><?php echo htmlspecialchars($parsedData['selected_host']['tx'] ?? '0 MB'); ?></span>
-                                            </div>
-                                            <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                                                <div class="h-full bg-amber-500 rounded-full" style="width: 15%"></div>
-                                            </div>
+
+                                        <div class="mt-2">
+                                            <h4 class="text-xl font-bold text-slate-900 font-mono">
+                                                <?php echo htmlspecialchars($parsedData['selected_host']['ip'] ?? ''); ?>
+                                            </h4>
+
+                                            <p class="text-xs font-semibold text-slate-600">
+                                                <?php echo htmlspecialchars($parsedData['selected_host']['nazwa'] ?? ''); ?>
+                                            </p>
+
+                                            <span class="text-[11px] text-slate-400">
+                                                <?php echo htmlspecialchars($parsedData['selected_host']['domena'] ?? ''); ?>
+                                            </span>
                                         </div>
                                     </div>
-                                </div>
 
-                                <div class="mt-6 pt-4 border-t border-slate-100 text-xs text-slate-500 space-y-2">
-                                    <div class="flex justify-between"><span>Suma transferu:</span> <span class="font-bold text-slate-800"><?php echo htmlspecialchars($parsedData['selected_host']['suma'] ?? '0 MB'); ?></span></div>
-                                    <div class="flex justify-between"><span>Suma wygenerowanych zdarzeń:</span> <span class="font-bold text-slate-800"><?php echo htmlspecialchars($parsedData['selected_host']['zdarzenia'] ?? '0'); ?> zdarzeń</span></div>
-                                    <div class="flex justify-between"><span>Urządzenie zabezpieczające:</span> <span class="font-semibold text-blue-600 flex items-center gap-1"><i data-lucide="shield" class="h-3.5 w-3.5"></i> <?php echo htmlspecialchars($parsedData['meta']['urzadzenie']); ?></span></div>
+                                    <!-- RX / TX -->
+                                    <div>
+                                        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">
+                                            Transfer
+                                        </span>
+
+                                        <div class="space-y-3">
+
+                                            <!-- RX -->
+                                            <div>
+                                                <div class="flex justify-between text-xs font-semibold mb-1">
+                                                    <span class="flex items-center gap-2 text-slate-600">
+                                                        <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+                                                        Pobieranie
+                                                    </span>
+
+                                                    <span class="text-emerald-600 font-bold">
+                                                        <?php echo htmlspecialchars($parsedData['selected_host']['pobrane_rx'] ?? '0 MB'); ?>
+                                                    </span>
+                                                </div>
+
+                                                <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                                                    <div class="h-full bg-emerald-500 rounded-full" style="width: 85%"></div>
+                                                </div>
+                                            </div>
+
+                                            <!-- TX -->
+                                            <div>
+                                                <div class="flex justify-between text-xs font-semibold mb-1">
+                                                    <span class="flex items-center gap-2 text-slate-600">
+                                                        <span class="h-2 w-2 rounded-full bg-amber-500"></span>
+                                                        Wysyłanie
+                                                    </span>
+
+                                                    <span class="text-amber-600 font-bold">
+                                                        <?php echo htmlspecialchars($parsedData['selected_host']['wyslane_tx'] ?? '0 MB'); ?>
+                                                    </span>
+                                                </div>
+
+                                                <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                                                    <div class="h-full bg-amber-500 rounded-full" style="width: 15%"></div>
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </div>
+
+                                    <!-- META -->
+                                    <div class="mt-6 pt-4 border-t border-slate-100 text-xs text-slate-500 space-y-2">
+
+                                                    <div class="flex justify-between">
+                                                        <span>Suma transferu:</span>
+                                                        <span class="font-bold text-slate-800">
+                                                            <?php echo htmlspecialchars($parsedData['selected_host']['suma_transferu'] ?? '0 MB'); ?>
+                                                        </span>
+                                                    </div>
+
+                                                    <div class="flex justify-between">
+                                                        <span>Zdarzenia:</span>
+                                                        <span class="font-bold text-slate-800">
+                                                            <?php echo htmlspecialchars($parsedData['selected_host']['zdarzenia'] ?? '0'); ?>
+                                                        </span>
+                                                    </div>
+
+                                                    <div class="flex justify-between items-center">
+                                                        <span>System:</span>
+                                                        <span class="font-semibold text-blue-600 flex items-center gap-1">
+                                                            <i data-lucide="shield" class="h-3 w-3"></i>
+                                                            <?php echo htmlspecialchars($parsedData['meta']['urzadzenie']); ?>
+                                                        </span>
+                                                    </div>
+
+                                                </div>
+
                                 </div>
                             </div>
 
