@@ -242,10 +242,13 @@ foreach (($parsedData['scans'] ?? []) as $scan) {
     if ($eventCount <= 0) $eventCount = (int)($scan['events_count'] ?? 1);
     if ($eventCount <= 0) $eventCount = 1;
 
-    scanWewAddTopPairCounts($destinationCountryCounts, $scan['dest_country'] ?? '', $eventCount, 'Nieznany');
-    scanWewAddTopPairCounts($destinationPortCounts, $scan['dest_port'] ?? '', $eventCount, 'Dowolny');
-    scanWewAddTopPairCounts($serviceNameCounts, $scan['service'] ?? '', $eventCount, 'Nieznana');
-    scanWewAddTopPairCounts($protocolNameCounts, $scan['protocol'] ?? '', $eventCount, 'Nieznany');
+    // Do wykresów bierzemy surowe wartości z kolumn *_raw, bo tam są pary typu:
+    // United States (114), 161 - (139), UDP (139), SNMP (139).
+    // Pola bez *_raw są już oczyszczone do pierwszej wartości i wtedy TOP-y wychodzą źle.
+    scanWewAddTopPairCounts($destinationCountryCounts, $scan['dest_country_raw'] ?? ($scan['dest_country'] ?? ''), $eventCount, 'Nieznany');
+    scanWewAddTopPairCounts($destinationPortCounts, $scan['dest_port_raw'] ?? ($scan['dest_port'] ?? ''), $eventCount, 'Dowolny');
+    scanWewAddTopPairCounts($serviceNameCounts, $scan['service_raw'] ?? ($scan['service'] ?? ''), $eventCount, 'Nieznana');
+    scanWewAddTopPairCounts($protocolNameCounts, $scan['protocol_raw'] ?? ($scan['protocol'] ?? ''), $eventCount, 'Nieznany');
 }
 
 arsort($destinationCountryCounts);
@@ -341,7 +344,7 @@ $maxDestinationCountryEvents = !empty($topDestinationCountries) ? max($topDestin
                     <th class="py-3 px-4 text-center">Zdarzenia</th>
                     <th class="py-3 px-4 text-center">Zagrożenie</th>
                     <th class="py-3 px-4">Aplikacja / Protokół</th>
-                    <th class="py-3 px-4">Typ / Sygnatura</th>
+                  
                     <th class="py-3 px-4 text-center">Akcja</th>
                 </tr>
             </thead>
@@ -440,12 +443,7 @@ $maxDestinationCountryEvents = !empty($topDestinationCountries) ? max($topDestin
                                 <div class="text-slate-900 font-bold"><?php echo htmlspecialchars($scan['application']); ?></div>
                                 <div class="text-[10px] text-slate-400 font-bold font-mono"><?php echo htmlspecialchars($scan['protocol']); ?> / <?php echo htmlspecialchars($scan['service']); ?></div>
                             </td>
-                            <td class="py-3.5 px-4 text-slate-500">
-                                <div class="font-semibold text-slate-700"><?php echo htmlspecialchars($scan['event_info']); ?></div>
-                                <div class="text-[10px] font-normal text-slate-400 truncate max-w-[120px]" title="<?php echo htmlspecialchars($scan['event_desc']); ?>">
-                                    <?php echo htmlspecialchars($scan['event_desc']); ?>
-                                </div>
-                            </td>
+                           
                             <td class="py-3.5 px-4 text-center">
                                 <div class="flex flex-col items-center justify-center gap-1.5">
                                     <button onclick="toggleScanHours('<?php echo $hoursId; ?>')" class="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50/70 px-2.5 py-1.5 text-[11px] font-bold text-red-700 shadow-sm hover:bg-red-100 hover:border-red-300 transition-all">

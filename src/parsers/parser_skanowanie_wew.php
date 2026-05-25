@@ -271,8 +271,11 @@ class RaportWewnSkanujaceParser {
                         $destPortRaw = $this->normalizeText($portText);
                         $sourceCountry = $this->cleanValue($sourceCountryText) ?: 'Reserved';
                         $destCountry = $this->cleanValue($destCountryText) ?: 'Reserved';
+                        $destCountryRaw = $this->normalizeText($destCountryText);
                         $protocol = $this->cleanValue($protocolText) ?: 'TCP';
+                        $protocolRaw = $this->normalizeText($protocolText);
                         $service = $this->cleanValue($serviceText) ?: 'Nieznana';
+                        $serviceRaw = $this->normalizeText($serviceText);
                         $app = $this->cleanValue($appText) ?: 'Skanowanie wewnętrzne';
                         $eventInfo = $this->cleanValue($eventInfoText) ?: 'Internal Port Scan';
                         $eventDesc = $this->cleanValue($eventDescText) ?: 'Wykryto skanowanie portów z sieci lokalnej';
@@ -291,6 +294,9 @@ class RaportWewnSkanujaceParser {
                             'application' => $app,
                             'source_country' => $sourceCountry,
                             'dest_country' => $destCountry,
+                            'dest_country_raw' => $destCountryRaw,
+                            'protocol_raw' => $protocolRaw,
+                            'service_raw' => $serviceRaw,
                             'source_hostname' => $this->cleanValue($sourceHostText),
                             'destination_hostname' => $this->cleanValue($destHostText),
                             'danger_level' => $eventsCount > 5000 ? 'Critical' : ($eventsCount > 1000 ? 'High' : 'Medium'),
