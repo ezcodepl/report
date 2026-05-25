@@ -101,7 +101,7 @@ if ($selectedFile) {
             $reportType = 'skanowanie';
             $parser = new RaportBedneLogowaniaHostyParser($fullPath);
         } elseif (mb_stripos($filename, 'zewnetrzne_skanujace_porty') !== false) {
-            $reportType = 'skanowanie';
+            $reportType = 'skanowanie_port_host_zew';
             $parser = new RaportZewnSkanujaceParser($fullPath);
         } elseif (mb_stripos($filename, 'Odrzucone_poaczenia_z_hostow_wewnetrznych') !== false) {
             $reportType = 'skanowanie';
@@ -249,7 +249,7 @@ if ($selectedFile) {
                         break;
                     case 'skanowanie':
                     default:
-                        include __DIR__ . '/inc/view_skanowanie.php';
+                        include __DIR__ . '/inc/view_skanowanie_port_host_zew.php';
                         break;
                 }
                 ?>
