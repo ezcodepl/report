@@ -1,7 +1,7 @@
 <?php
 /**
- * Klasa Parser dla pliku: Hosty_zewnetrzne_skanujace_porty_...html
- * Analizuje próby skanowania z hostów zewnętrznych, bezpiecznie przetwarzając zagnieżdżone tabele Logsign.
+ * Parser raportu Logsign: hosty zewnętrzne skanujące porty.
+ * Wersja obsługuje wiele rekordów Source.IP oraz zagnieżdżone tabele z Time.Generated.
  */
 class RaportZewnSkanujaceParser {
     private $filePath;
@@ -13,7 +13,7 @@ class RaportZewnSkanujaceParser {
     }
 
     public function getCountryFlag($countryName) {
-        $countryName = trim(strtolower($countryName));
+        $countryName = trim(strtolower((string)$countryName));
         $countries = [
             'poland' => '🇵🇱', 'polska' => '🇵🇱',
             'united states' => '🇺🇸', 'usa' => '🇺🇸',
@@ -21,37 +21,112 @@ class RaportZewnSkanujaceParser {
             'russia' => '🇷🇺', 'rosja' => '🇷🇺',
             'china' => '🇨🇳', 'chiny' => '🇨🇳',
             'netherlands' => '🇳🇱', 'holandia' => '🇳🇱',
-            'reserved' => '🏳️'
+            'reserved' => '🏳️', 'unknown' => '🏳️'
         ];
         return $countries[$countryName] ?? '🏳️';
     }
 
-    /**
-     * Bezpiecznie odczytuje wartość komórki, rozwijając zagnieżdżone tabele Logsign na linie tekstu.
-     */
-    private function getCellValue($colNode) {
-        if (!$colNode) return '';
-        
-        // Szukamy zagnieżdżonych tabel wewnątrz komórki
-        $nestedTables = $colNode->getElementsByTagName('table');
-        if ($nestedTables->length > 0) {
-            $lines = [];
-            $tds = $colNode->getElementsByTagName('td');
-            foreach ($tds as $td) {
-                // Wybieramy wyłącznie liście (td, które same nie posiadają kolejnych tabel)
-                if ($td->getElementsByTagName('table')->length === 0) {
-                    $text = trim($td->textContent);
-                    if ($text !== '') {
-                        $lines[] = $text;
-                    }
-                }
+    private function normalizeText($text) {
+        $text = html_entity_decode((string)$text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = str_replace(["\xc2\xa0", '&nbsp;'], ' ', $text);
+        $text = preg_replace('/[ \t]+/', ' ', $text);
+        $text = preg_replace('/\s*\n\s*/', "\n", $text);
+        return trim($text);
+    }
+
+    private function cleanValue($text) {
+        $text = $this->normalizeText($text);
+        $firstLine = trim(explode("\n", $text)[0] ?? '');
+        return trim(preg_replace('/\s*\([\d\s,]+\)\s*$/u', '', $firstLine));
+    }
+
+    private function getDirectCells(DOMXPath $xpath, DOMNode $row) {
+        $cells = [];
+        foreach ($xpath->query('./td | ./th', $row) as $cell) {
+            $cells[] = $cell;
+        }
+        return $cells;
+    }
+
+    private function cellLines(DOMXPath $xpath, DOMNode $cell) {
+        $lines = [];
+        $leafTds = $xpath->query('.//td[not(.//table)]', $cell);
+
+        if ($leafTds->length > 0) {
+            foreach ($leafTds as $td) {
+                $txt = $this->normalizeText($td->textContent);
+                if ($txt !== '') $lines[] = $txt;
             }
-            if (!empty($lines)) {
-                return implode("\n", $lines);
+        } else {
+            $txt = $this->normalizeText($cell->textContent);
+            if ($txt !== '') $lines[] = $txt;
+        }
+
+        return $lines;
+    }
+
+    private function getCellText(DOMXPath $xpath, ?DOMNode $cell) {
+        if (!$cell) return '';
+        return implode("\n", $this->cellLines($xpath, $cell));
+    }
+
+    private function extractCount($text, $default = 1) {
+        if (preg_match('/\(([\d\s,]+)\)/u', (string)$text, $m)) {
+            return (int)str_replace([' ', ','], '', $m[1]);
+        }
+        return $default;
+    }
+
+    private function extractTimeGeneratedList(DOMXPath $xpath, ?DOMNode $cell) {
+        $list = [];
+        if (!$cell) return $list;
+
+        foreach ($this->cellLines($xpath, $cell) as $line) {
+            if (preg_match('/(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s*\(([\d\s,]+)\)/u', $line, $m)) {
+                $count = (int)str_replace([' ', ','], '', $m[2]);
+                $list[] = [
+                    'datetime' => $m[1],
+                    'count' => $count,
+                    'hour' => substr($m[1], 11, 2),
+                ];
             }
         }
-        
-        return trim($colNode->nodeValue);
+
+        return $list;
+    }
+
+    private function buildHourlyStats(array $timeList) {
+        $hourly = array_fill(0, 24, 0);
+        foreach ($timeList as $item) {
+            $hour = isset($item['hour']) ? (int)$item['hour'] : -1;
+            if ($hour >= 0 && $hour <= 23) {
+                $hourly[$hour] += (int)($item['count'] ?? 0);
+            }
+        }
+        return $hourly;
+    }
+
+    private function findHeaderMap(DOMXPath $xpath, DOMNode $table) {
+        $map = [];
+        $headerRow = $xpath->query('./thead/tr[1] | .//thead/tr[1]', $table)->item(0);
+        if (!$headerRow) return $map;
+
+        $headers = $this->getDirectCells($xpath, $headerRow);
+        foreach ($headers as $i => $th) {
+            $name = $this->normalizeText($th->textContent);
+            $name = preg_replace('/\s+/', ' ', $name);
+            if ($name !== '') $map[$name] = $i;
+        }
+        return $map;
+    }
+
+    private function idx(array $headerMap, array $needles) {
+        foreach ($headerMap as $name => $i) {
+            foreach ($needles as $needle) {
+                if (stripos($name, $needle) !== false) return $i;
+            }
+        }
+        return null;
     }
 
     public function parse() {
@@ -73,113 +148,114 @@ class RaportZewnSkanujaceParser {
         $dom = new DOMDocument();
         $dom->loadHTML('<?xml encoding="UTF-8">' . $htmlContent);
         libxml_clear_errors();
-
         $xpath = new DOMXPath($dom);
-        $rows = $xpath->query('//table//tr');
 
-        $headers = [];
         $uniqueIps = [];
         $ipCounts = [];
 
-        foreach ($rows as $row) {
-            $cols = $xpath->query('.//td | .//th', $row);
-            if ($cols->length === 0) continue;
+        // Każdy blok hosta zaczyna się od komórki z IP w tabeli nadrzędnej.
+        // Następna komórka / sąsiednia część zawiera tabelę szczegółową z Destination.Port ... Time.Generated.
+        $sourceCells = $xpath->query('//td[not(.//table)]');
 
-            // Wykrywanie i oczyszczanie nagłówków kolumn
-            if (empty($headers) && $cols->length > 4) {
-                foreach ($cols as $idx => $col) {
-                    $headers[$idx] = trim(preg_replace('/\s*\([^)]*\)/', '', $col->nodeValue));
-                }
+        foreach ($sourceCells as $sourceCell) {
+            $sourceText = $this->normalizeText($sourceCell->textContent);
+            if (!preg_match('/\b(?:\d{1,3}\.){3}\d{1,3}\b/', $sourceText, $ipMatch)) {
                 continue;
             }
 
-            if (!empty($headers) && $cols->length >= count($headers)) {
-                $record = [];
-                foreach ($cols as $idx => $col) {
-                    if (isset($headers[$idx])) {
-                        $record[$headers[$idx]] = $this->getCellValue($col);
+            $sourceIp = $ipMatch[0];
+            if (!filter_var($sourceIp, FILTER_VALIDATE_IP)) continue;
+
+            $hostRow = $sourceCell->parentNode;
+            if (!$hostRow) continue;
+
+            // Szukamy tabel szczegółowych w tym samym wierszu/bloku hosta.
+            $detailTables = $xpath->query('.//table[.//th[contains(normalize-space(.), "Time.Generated")]]', $hostRow);
+            if ($detailTables->length === 0) {
+                // Fallback: najbliższa tabela po komórce Source.IP w dokumencie.
+                $detailTables = $xpath->query('following::table[.//th[contains(normalize-space(.), "Time.Generated")]][1]', $sourceCell);
+            }
+
+            foreach ($detailTables as $detailTable) {
+                $headerMap = $this->findHeaderMap($xpath, $detailTable);
+                if (empty($headerMap)) continue;
+
+                $iPort = $this->idx($headerMap, ['Destination.Port']);
+                $iEventValue = $this->idx($headerMap, ['EventMap.Info (Value)', 'EventMap.Info Value']);
+                $iDestIp = $this->idx($headerMap, ['Destination.IP']);
+                $iProtocol = $this->idx($headerMap, ['Protocol.Name', 'Protocol']);
+                $iService = $this->idx($headerMap, ['Service.Name', 'Service']);
+                $iApp = $this->idx($headerMap, ['Application.Name', 'Application']);
+                $iSourceCountry = $this->idx($headerMap, ['Source.Country']);
+                $iDestCountry = $this->idx($headerMap, ['Destination.Country']);
+                $iEventInfo = $this->idx($headerMap, ['EventMap.Info (Term)', 'EventMap.Info']);
+                $iEventDesc = $this->idx($headerMap, ['EventSource.Description']);
+                $iTime = $this->idx($headerMap, ['Time.Generated']);
+
+                $bodyRows = $xpath->query('./tbody/tr', $detailTable);
+                if ($bodyRows->length === 0) {
+                    $bodyRows = $xpath->query('.//tbody/tr', $detailTable);
+                }
+
+                foreach ($bodyRows as $detailRow) {
+                    // Bierzemy tylko bezpośrednie komórki tego wiersza, bez komórek zagnieżdżonych tabel.
+                    $cells = $this->getDirectCells($xpath, $detailRow);
+                    if (count($cells) < 2) continue;
+
+                    $portText = $this->getCellText($xpath, $cells[$iPort] ?? null);
+                    $eventValueText = $this->getCellText($xpath, $cells[$iEventValue] ?? null);
+                    $destIpText = $this->getCellText($xpath, $cells[$iDestIp] ?? null);
+                    $protocolText = $this->getCellText($xpath, $cells[$iProtocol] ?? null);
+                    $serviceText = $this->getCellText($xpath, $cells[$iService] ?? null);
+                    $appText = $this->getCellText($xpath, $cells[$iApp] ?? null);
+                    $sourceCountryText = $this->getCellText($xpath, $cells[$iSourceCountry] ?? null);
+                    $destCountryText = $this->getCellText($xpath, $cells[$iDestCountry] ?? null);
+                    $eventInfoText = $this->getCellText($xpath, $cells[$iEventInfo] ?? null);
+                    $eventDescText = $this->getCellText($xpath, $cells[$iEventDesc] ?? null);
+                    $timeText = $this->getCellText($xpath, $cells[$iTime] ?? null);
+                    $timeList = $this->extractTimeGeneratedList($xpath, $cells[$iTime] ?? null);
+                    $hourlyStats = $this->buildHourlyStats($timeList);
+
+                    $eventsCount = 1;
+                    if ($eventValueText !== '' && preg_match('/\d+/', $eventValueText, $m)) {
+                        $eventsCount = (int)$m[0];
+                    } elseif ($portText !== '') {
+                        $eventsCount = $this->extractCount($portText, 1);
                     }
-                }
-
-                $sourceIp = '';
-                $destIp = '';
-                $destPort = '';
-                $eventsCount = 1;
-                $protocol = 'TCP';
-                $service = '';
-                $app = '';
-                $sourceCountry = 'Unknown';
-                $destCountry = 'Poland';
-                $timeGenerated = '';
-
-                foreach ($record as $key => $val) {
-                    $lines = explode("\n", $val);
-                    $firstLine = isset($lines[0]) ? trim($lines[0]) : '';
-                    $cleanVal = trim(preg_replace('/\s*\([^)]*\)/', '', $firstLine));
-
-                    if (stripos($key, 'Source.IP') !== false) {
-                        $sourceIp = $cleanVal;
-                        if (preg_match('/\(([\d\s,]+)\)/', $firstLine, $m)) {
-                            $eventsCount = (int)str_replace([' ', ','], '', $m[1]);
-                        }
-                    } elseif (stripos($key, 'Destination.IP') !== false) {
-                        $destIp = $val; // Zachowujemy kompletną listę zagnieżdżoną
-                    } elseif (stripos($key, 'Destination.Port') !== false || stripos($key, 'Port') !== false) {
-                        $destPort = $cleanVal;
-                        if (preg_match('/\(([\d\s,]+)\)/', $firstLine, $m)) {
-                            $eventsCount = (int)str_replace([' ', ','], '', $m[1]);
-                        }
-                    } elseif (stripos($key, 'Protocol') !== false) {
-                        $protocol = $val;
-                    } elseif (stripos($key, 'Service') !== false) {
-                        $service = $val;
-                    } elseif (stripos($key, 'Application') !== false) {
-                        $app = $val;
-                    } elseif (stripos($key, 'Source.Country') !== false) {
-                        $sourceCountry = $cleanVal;
-                    } elseif (stripos($key, 'Destination.Country') !== false) {
-                        $destCountry = $cleanVal;
-                    } elseif (stripos($key, 'Time') !== false) {
-                        $timeGenerated = $val; // Pełna lista timestampów
+                    if (!empty($timeList)) {
+                        $sumFromTimes = array_sum(array_column($timeList, 'count'));
+                        if ($sumFromTimes > 0) $eventsCount = $sumFromTimes;
                     }
-                }
 
-                // Bezpieczne mapowanie w przypadku grupowania nadrzędnego
-                if (empty($sourceIp) && isset($record['Source.IP'])) {
-                    $sourceIp = trim(preg_replace('/\s*\([^)]*\)/', '', explode("\n", $record['Source.IP'])[0]));
-                }
-                
-                // Inteligentne wykrywanie pierwszej kolumny jako Source IP w razie braku dokładnego nagłówka
-                if (empty($sourceIp)) {
-                    $firstColVal = $this->getCellValue($cols->item(0));
-                    $potentialIp = trim(preg_replace('/\s*\([^)]*\)/', '', explode("\n", $firstColVal)[0]));
-                    if (filter_var($potentialIp, FILTER_VALIDATE_IP)) {
-                        $sourceIp = $potentialIp;
-                        if (preg_match('/\(([\d\s,]+)\)/', explode("\n", $firstColVal)[0], $m)) {
-                            $eventsCount = (int)str_replace([' ', ','], '', $m[1]);
-                        }
-                    }
-                }
+                    $destPort = $this->cleanValue($portText) ?: 'Dowolny';
+                    $sourceCountry = $this->cleanValue($sourceCountryText) ?: 'Unknown';
+                    $destCountry = $this->cleanValue($destCountryText) ?: 'Unknown';
+                    $protocol = $this->cleanValue($protocolText) ?: 'TCP';
+                    $service = $this->cleanValue($serviceText) ?: 'Nieznana';
+                    $app = $this->cleanValue($appText) ?: 'Skanowanie portów';
+                    $eventInfo = $this->cleanValue($eventInfoText) ?: 'External Scan detected';
+                    $eventDesc = $this->cleanValue($eventDescText) ?: 'Złośliwe próby skanowania portów z adresu zewnętrznego.';
 
-                if ($sourceIp) {
                     $uniqueIps[$sourceIp] = true;
                     $ipCounts[$sourceIp] = ($ipCounts[$sourceIp] ?? 0) + $eventsCount;
                     $data['meta']['suma_zdarzen'] += $eventsCount;
 
                     $data['scans'][] = [
                         'source_ip' => $sourceIp,
-                        'dest_ip' => $destIp ?: 'Dowolny',
-                        'dest_port' => $destPort ?: 'Dowolny',
-                        'protocol' => trim(preg_replace('/\s*\([^)]*\)/', '', explode("\n", $protocol)[0])),
-                        'service' => trim(preg_replace('/\s*\([^)]*\)/', '', explode("\n", $service)[0])) ?: 'Nieznana',
-                        'application' => trim(preg_replace('/\s*\([^)]*\)/', '', explode("\n", $app)[0])) ?: 'Skanowanie portów',
-                        'source_country' => $sourceCountry ?: 'Unknown',
-                        'dest_country' => $destCountry ?: 'Unknown',
+                        'dest_ip' => $destIpText ?: 'Dowolny',
+                        'dest_port' => $destPort,
+                        'protocol' => $protocol,
+                        'service' => $service,
+                        'application' => $app,
+                        'source_country' => $sourceCountry,
+                        'dest_country' => $destCountry,
                         'danger_level' => $eventsCount > 5000 ? 'Critical' : ($eventsCount > 1000 ? 'High' : 'Medium'),
                         'events_count' => $eventsCount,
-                        'event_info' => 'External Scan detected',
-                        'event_desc' => 'Złośliwe próby skanowania portów z adresu zewnętrznego.',
-                        'time_generated' => $timeGenerated,
+                        'event_info' => $eventInfo,
+                        'event_desc' => $eventDesc,
+                        'time_generated' => $timeText,
+                        'time_generated_list' => $timeList,
+                        'hourly_stats' => $hourlyStats,
                         'abuse_url' => 'https://www.abuseipdb.com/check/' . urlencode($sourceIp),
                         'virustotal_url' => 'https://www.virustotal.com/gui/ip-address/' . urlencode($sourceIp),
                         'whois_url' => 'https://www.whois.com/whois/' . urlencode($sourceIp)
@@ -188,6 +264,24 @@ class RaportZewnSkanujaceParser {
             }
         }
 
+        // Usuwanie ewentualnych duplikatów wynikających z fallbacków DOM.
+        $seen = [];
+        $deduped = [];
+        $data['meta']['suma_zdarzen'] = 0;
+        $ipCounts = [];
+        $uniqueIps = [];
+
+        foreach ($data['scans'] as $scan) {
+            $key = $scan['source_ip'] . '|' . $scan['dest_port'] . '|' . md5($scan['dest_ip'] . '|' . $scan['time_generated']);
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+            $deduped[] = $scan;
+            $uniqueIps[$scan['source_ip']] = true;
+            $ipCounts[$scan['source_ip']] = ($ipCounts[$scan['source_ip']] ?? 0) + (int)$scan['events_count'];
+            $data['meta']['suma_zdarzen'] += (int)$scan['events_count'];
+        }
+
+        $data['scans'] = $deduped;
         $data['meta']['unikalne_ip'] = count($uniqueIps);
         if (!empty($ipCounts)) {
             arsort($ipCounts);

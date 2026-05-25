@@ -1,6 +1,6 @@
 
 <!-- ========================================== -->
-<!-- WIDOK: SKANOWANIE I NARUSZENIA BEZPIECZEŃSTWA -->
+<!-- WIDOK: HOSTY WEWNĘTRZNE SKANUJĄCE PORTY -->
 <!-- ========================================== -->
 
 <?php
@@ -12,6 +12,22 @@ if (!function_exists('buildScanHourlyEvents')) {
      * 2026-05-21 14:03:49 (15)
      */
     function buildScanHourlyEvents($scan) {
+        if (!empty($scan['hourly_stats']) && is_array($scan['hourly_stats'])) {
+            $hourlyEvents = array_fill(0, 24, 0);
+            foreach ($scan['hourly_stats'] as $hour => $count) {
+                $hour = (int)$hour;
+                if ($hour >= 0 && $hour <= 23) {
+                    $hourlyEvents[$hour] = (int)$count;
+                }
+            }
+            return [
+                'hours' => $hourlyEvents,
+                'total' => array_sum($hourlyEvents),
+                'max' => max($hourlyEvents) ?: 1,
+                'raw' => (string)($scan['time_generated'] ?? ''),
+            ];
+        }
+
         $hourlyEvents = array_fill(0, 24, 0);
         $rawChunks = [];
 
@@ -72,7 +88,7 @@ if (!function_exists('buildScanHourlyEvents')) {
     <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm hover:shadow-md transition-all duration-200">
         <div class="flex items-center justify-between">
             <div>
-                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Wykryte Zdarzenia</p>
+                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Wykryte skanowania</p>
                 <h3 class="mt-2 text-2xl font-bold text-red-600"><?php echo number_format($parsedData['meta']['suma_zdarzen'], 0, ',', ' '); ?> <span class="text-xs font-medium text-slate-400">zd.</span></h3>
             </div>
             <div class="rounded-xl bg-red-50 p-3 text-red-600 animate-pulse">
@@ -84,7 +100,7 @@ if (!function_exists('buildScanHourlyEvents')) {
     <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm hover:shadow-md transition-all duration-200">
         <div class="flex items-center justify-between">
             <div>
-                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Aktywni Agresorzy</p>
+                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Aktywne Hosty Wewnętrzne</p>
                 <h3 class="mt-2 text-2xl font-bold text-slate-900"><?php echo $parsedData['meta']['unikalne_ip']; ?> <span class="text-xs font-medium text-slate-400">hostów</span></h3>
             </div>
             <div class="rounded-xl bg-slate-100 p-3 text-slate-600">
@@ -96,7 +112,7 @@ if (!function_exists('buildScanHourlyEvents')) {
     <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm hover:shadow-md transition-all duration-200">
         <div class="flex items-center justify-between">
             <div>
-                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Główny Agresor (IP)</p>
+                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Najaktywniejszy Host (IP)</p>
                 <h3 class="mt-2 text-md font-bold text-red-700 font-mono truncate" title="<?php echo htmlspecialchars($parsedData['meta']['najbardziej_aktywny_ip']); ?>">
                     <?php echo htmlspecialchars($parsedData['meta']['najbardziej_aktywny_ip']); ?>
                 </h3>
@@ -126,7 +142,7 @@ if (!function_exists('buildScanHourlyEvents')) {
     <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
         <div class="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
             <i data-lucide="globe-2" class="h-5 w-5 text-indigo-600"></i>
-            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide">Geolokalizacja Incydentów (Kraje)</h3>
+            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide">Kraje / lokalizacja hostów</h3>
         </div>
         <div class="space-y-4">
             <?php
@@ -166,7 +182,7 @@ if (!function_exists('buildScanHourlyEvents')) {
     <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
         <div class="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
             <i data-lucide="cpu" class="h-5 w-5 text-red-600"></i>
-            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide">Najczęściej Atakowane Usługi</h3>
+            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide">Najczęściej skanowane usługi</h3>
         </div>
         <div class="space-y-4">
             <?php
@@ -206,9 +222,9 @@ if (!function_exists('buildScanHourlyEvents')) {
         <div>
             <h3 class="text-base font-bold text-slate-950 flex items-center gap-2">
                 <span class="h-2.5 w-2.5 rounded-full bg-red-600 animate-ping"></span>
-                Analiza Raportu Zdarzeń i Naruszenia Reguł Bezpieczeństwa Firewall / Auth
+                Hosty wewnętrzne skanujące porty — analiza zdarzeń Firewall / Auth
             </h3>
-            <p class="text-xs text-slate-400 mt-1">Zewnętrzne lub wewnętrzne hosty generujące próby połączeń, skanowań lub nieudanych logowań.</p>
+            <p class="text-xs text-slate-400 mt-1">Hosty wewnętrzne generujące próby skanowania portów i nietypowe połączenia w sieci lokalnej.</p>
         </div>
         <!-- Dynamiczne Filtrowanie -->
         <div class="relative max-w-xs w-full">
@@ -292,7 +308,7 @@ if (!function_exists('buildScanHourlyEvents')) {
                             <td class="py-3.5 px-4 font-bold text-slate-900 font-mono">
                                 <div class="flex flex-col">
                                     <span><?php echo htmlspecialchars($scan['source_ip']); ?></span>
-                                    <span class="text-[10px] text-slate-400 font-normal">Zewnętrzny agresor</span>
+                                    <span class="text-[10px] text-slate-400 font-normal">Host wewnętrzny</span>
                                 </div>
                             </td>
                             <td class="py-3.5 px-4 font-mono font-medium">
@@ -468,7 +484,7 @@ if (!function_exists('buildScanHourlyEvents')) {
                                     <div>
                                         <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3 flex items-center gap-1">
                                             <i data-lucide="search" class="h-4 w-4 text-red-500"></i>
-                                            Analiza Reputacyjna IP źródłowego
+                                            Analiza hosta źródłowego
                                         </h4>
                                         <div class="bg-white rounded-xl border border-slate-150 p-4 space-y-3">
                                             <div class="text-[11px] text-slate-500 leading-snug">
@@ -623,7 +639,7 @@ if (!function_exists('buildScanHourlyEvents')) {
     }
 
     /**
-     * Rozwija i zwija szczegółowy panel korelacji zdarzeń dla wybranego agresora
+     * Rozwija i zwija szczegółowy panel korelacji zdarzeń dla wybranego hosta
      */
     function toggleScanDetails(detailId) {
         const detailRow = document.getElementById(detailId);
