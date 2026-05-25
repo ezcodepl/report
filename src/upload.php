@@ -6,6 +6,99 @@
  */
 
 // Uruchomienie buforowania wyjścia, aby zapobiec problemom z nagłówkami przekierowania HTTP
+// ob_start();
+
+// if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['zip_file'])) {
+//     $zipFile = $_FILES['zip_file']['tmp_name'];
+
+//     $tempDir = __DIR__ . '/temp/';
+//     $daneDir = __DIR__ . '/dane/';
+
+//     // Tworzenie wymaganych folderów z wyciszeniem ewentualnych ostrzeżeń systemowych
+//     if (!file_exists($tempDir)) @mkdir($tempDir, 0777, true);
+//     if (!file_exists($daneDir)) @mkdir($daneDir, 0777, true);
+
+//     $zip = new ZipArchive;
+//     if ($zip->open($zipFile) === TRUE) {
+//         // Wypakowanie archiwum do folderu tymczasowego
+//         @$zip->extractTo($tempDir);
+//         $zip->close();
+
+//         // Rekurencyjne przeszukiwanie folderu tymczasowego w celu znalezienia wszystkich plików .html
+//         if (file_exists($tempDir)) {
+//             $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($tempDir));
+//             $processedCount = 0;
+
+//             foreach ($iterator as $file) {
+//                 if ($file->isFile() && strtolower($file->getExtension()) === 'html') {
+//                     $filename = $file->getFilename();
+
+//                     // Wyrażenie regularne szukające daty w formacie RRRR-MM-DD
+//                     if (preg_match('/(\d{4}-\d{2}-\d{2})/', $filename, $matches)) {
+//                         $dateFolder = $matches[1];
+//                         $targetFolder = $daneDir . $dateFolder . '/';
+
+//                         // Tworzenie folderu dla konkretnej daty
+//                         if (!file_exists($targetFolder)) {
+//                             @mkdir($targetFolder, 0777, true);
+//                         }
+
+//                         // Kopiowanie pliku do odpowiednio nazwanego folderu daty
+//                         @copy($file->getRealPath(), $targetFolder . $filename);
+//                         $processedCount++;
+//                     }
+//                 }
+//             }
+//         }
+
+//         // Czyszczenie wyłącznie zawartości katalogu tymczasowego (bez usuwania folderu głównego temp)
+//         // Zapobiega to błędom uprawnień (Permission denied) na zmapowanych wolumenach Docker
+//         clearTempDirectoryContents($tempDir);
+
+//         // Wyczyszczenie bufora i bezpieczne przekierowanie do dashboardu
+//         ob_end_clean();
+//         header("Location: index.php?upload_success=" . $processedCount);
+//         exit;
+//     } else {
+//         ob_end_clean();
+//         header("Location: index.php?upload_error=1");
+//         exit;
+//     }
+// } else {
+//     ob_end_clean();
+//     header("Location: index.php");
+//     exit;
+// }
+
+// /**
+//  * Bezpiecznie usuwa wszystkie podfoldery oraz pliki z folderu tymczasowego,
+//  * pozostawiając nienaruszony katalog główny.
+//  */
+// function clearTempDirectoryContents($dir) {
+//     if (!file_exists($dir)) return;
+
+//     $files = new RecursiveIteratorIterator(
+//         new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
+//         RecursiveIteratorIterator::CHILD_FIRST
+//     );
+
+//     foreach ($files as $fileinfo) {
+//         $realPath = $fileinfo->getRealPath();
+//         if ($fileinfo->isDir()) {
+//             @rmdir($realPath);
+//         } else {
+//             @unlink($realPath);
+//         }
+//     }
+// }
+
+/**
+ * Skrypt odpowiada za bezpieczne odebranie pliku ZIP, rozpakowanie go (również w przypadku ZIP-w-ZIP),
+ * odczytanie daty z nazw plików HTML za pomocą wyrażenia regularnego,
+ * przeniesienie ich do odpowiedniego katalogu w folderze /dane/ oraz posprzątanie po sobie.
+ */
+
+// Uruchomienie buforowania wyjścia, aby zapobiec problemom z nagłówkami przekierowania HTTP
 ob_start();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['zip_file'])) {
@@ -18,56 +111,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['zip_file'])) {
     if (!file_exists($tempDir)) @mkdir($tempDir, 0777, true);
     if (!file_exists($daneDir)) @mkdir($daneDir, 0777, true);
 
-    $zip = new ZipArchive;
-    if ($zip->open($zipFile) === TRUE) {
-        // Wypakowanie archiwum do folderu tymczasowego
-        @$zip->extractTo($tempDir);
-        $zip->close();
+    // Kopiujemy plik z $_FILES do temp, aby móc nim manipulować w pętli rozpakowującej
+    $currentZipPath = $tempDir . 'upload_' . time() . '.zip';
+    if (move_uploaded_file($zipFile, $currentZipPath)) {
+        
+        $zip = new ZipArchive;
+        $extractionSuccess = false;
 
-        // Rekurencyjne przeszukiwanie folderu tymczasowego w celu znalezienia wszystkich plików .html
-        if (file_exists($tempDir)) {
-            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($tempDir));
+        // Pętla "odwijająca" – działa dopóki istnieje plik ZIP do rozpakowania
+        while (file_exists($currentZipPath) && $zip->open($currentZipPath) === TRUE) {
+            @$zip->extractTo($tempDir);
+            $zip->close();
+            
+            // Usuwamy przetworzony plik ZIP, żeby nie zapętlić skryptu
+            @unlink($currentZipPath);
+            $extractionSuccess = true;
+
+            // Sprawdzamy, czy w temp pojawił się kolejny, zagnieżdżony plik ZIP
+            $currentZipPath = findNestedZip($tempDir);
+        }
+
+        if ($extractionSuccess) {
             $processedCount = 0;
 
-            foreach ($iterator as $file) {
-                if ($file->isFile() && strtolower($file->getExtension()) === 'html') {
-                    $filename = $file->getFilename();
+            // Rekurencyjne przeszukiwanie folderu tymczasowego w celu znalezienia wszystkich plików .html
+            if (file_exists($tempDir)) {
+                $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($tempDir));
 
-                    // Wyrażenie regularne szukające daty w formacie RRRR-MM-DD
-                    if (preg_match('/(\d{4}-\d{2}-\d{2})/', $filename, $matches)) {
-                        $dateFolder = $matches[1];
-                        $targetFolder = $daneDir . $dateFolder . '/';
+                foreach ($iterator as $file) {
+                    if ($file->isFile() && strtolower($file->getExtension()) === 'html') {
+                        $filename = $file->getFilename();
 
-                        // Tworzenie folderu dla konkretnej daty
-                        if (!file_exists($targetFolder)) {
-                            @mkdir($targetFolder, 0777, true);
+                        // Wyrażenie regularne szukające daty w formacie RRRR-MM-DD
+                        if (preg_match('/(\d{4}-\d{2}-\d{2})/', $filename, $matches)) {
+                            $dateFolder = $matches[1];
+                            $targetFolder = $daneDir . $dateFolder . '/';
+
+                            // Tworzenie folderu dla konkretnej daty
+                            if (!file_exists($targetFolder)) {
+                                @mkdir($targetFolder, 0777, true);
+                            }
+
+                            // Kopiowanie pliku do odpowiednio nazwanego folderu daty
+                            @copy($file->getRealPath(), $targetFolder . $filename);
+                            $processedCount++;
                         }
-
-                        // Kopiowanie pliku do odpowiednio nazwanego folderu daty
-                        @copy($file->getRealPath(), $targetFolder . $filename);
-                        $processedCount++;
                     }
                 }
             }
+
+            // Czyszczenie zawartości katalogu tymczasowego
+            clearTempDirectoryContents($tempDir);
+
+            // Wyczyszczenie bufora i bezpieczne przekierowanie do dashboardu
+            ob_end_clean();
+            header("Location: index.php?upload_success=" . $processedCount);
+            exit;
         }
-
-        // Czyszczenie wyłącznie zawartości katalogu tymczasowego (bez usuwania folderu głównego temp)
-        // Zapobiega to błędom uprawnień (Permission denied) na zmapowanych wolumenach Docker
-        clearTempDirectoryContents($tempDir);
-
-        // Wyczyszczenie bufora i bezpieczne przekierowanie do dashboardu
-        ob_end_clean();
-        header("Location: index.php?upload_success=" . $processedCount);
-        exit;
-    } else {
-        ob_end_clean();
-        header("Location: index.php?upload_error=1");
-        exit;
     }
+    
+    // Jeśli coś poszło nie tak z wypakowaniem lub plikiem
+    clearTempDirectoryContents($tempDir);
+    ob_end_clean();
+    header("Location: index.php?upload_error=1");
+    exit;
+
 } else {
     ob_end_clean();
     header("Location: index.php");
     exit;
+}
+
+/**
+ * Szuka pierwszego napotkanego pliku ZIP w katalogu tymczasowym.
+ * Zwraca pełną ścieżkę do pliku lub false, jeśli nie znaleziono.
+ */
+function findNestedZip($dir) {
+    if (!file_exists($dir)) return false;
+
+    $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS));
+    foreach ($iterator as $file) {
+        if ($file->isFile() && strtolower($file->getExtension()) === 'zip') {
+            return $file->getRealPath();
+        }
+    }
+    return false;
 }
 
 /**

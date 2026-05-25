@@ -1,7 +1,7 @@
 <?php
 /**
  * Klasa Parser dla pliku: Uzytkownicy_z_bednymi_probami_logowania_...html
- * Wyciąga i parsuje logi nieudanych autoryzacji pod kątem nazw użytkowników.
+ * Wyciąga i parsuje logi nieudanych autoryzacji pod kątem nazw użytkowników i pełnej korelacji danych.
  */
 class RaportBedneLogowaniaUzytkownicyParser {
     private $filePath;
@@ -16,7 +16,8 @@ class RaportBedneLogowaniaUzytkownicyParser {
         $countryName = trim(strtolower($countryName));
         $countries = [
             'poland' => '🇵🇱', 'polska' => '🇵🇱',
-            'united states' => '🇺🇸', 'usa' => '🇺🇸'
+            'united states' => '🇺🇸', 'usa' => '🇺🇸',
+            'germany' => '🇩🇪', 'niemcy' => '🇩🇪'
         ];
         return $countries[$countryName] ?? '🏳️';
     }
@@ -28,14 +29,19 @@ class RaportBedneLogowaniaUzytkownicyParser {
                 'suma_zdarzen' => 0,
                 'unikalne_ip' => 0,
                 'najbardziej_aktywny_ip' => 'Brak',
-                'urzadzenie' => 'FortiGate (FG)'
+                'urzadzenie' => 'Logsign SIEM'
             ],
-            'scans' => []
+            'records' => []
         ];
 
         if (!file_exists($this->filePath)) return $data;
 
         $htmlContent = file_get_contents($this->filePath);
+        
+        // Konwersja tagów <br> na znak nowej linii \n przed analizą DOM.
+        // Gwarantuje to poprawne zachowanie wielolinijkowego formatu Time.Generated (Term)
+        $htmlContent = str_ireplace(['<br>', '<br/>', '<br />'], "\n", $htmlContent);
+
         libxml_use_internal_errors(true);
         $dom = new DOMDocument();
         $dom->loadHTML('<?xml encoding="UTF-8">' . $htmlContent);
@@ -52,13 +58,15 @@ class RaportBedneLogowaniaUzytkownicyParser {
             $cols = $xpath->query('.//td | .//th', $row);
             if ($cols->length === 0) continue;
 
-            if (empty($headers) && $cols->length > 3) {
+            // Wykrywanie nagłówków tabeli na podstawie thead użytkownika
+            if (empty($headers)) {
                 foreach ($cols as $idx => $col) {
-                    $headers[$idx] = trim(preg_replace('/\s*\([^)]*\)/', '', $col->nodeValue));
+                    $headers[$idx] = trim($col->nodeValue);
                 }
                 continue;
             }
 
+            // Mapowanie wartości wierszy na nagłówki
             if (!empty($headers) && $cols->length >= count($headers)) {
                 $record = [];
                 foreach ($cols as $idx => $col) {
@@ -67,50 +75,59 @@ class RaportBedneLogowaniaUzytkownicyParser {
                     }
                 }
 
-                $sourceIp = '';
-                $user = '';
-                $eventsCount = 1;
-                $service = 'SSH/VPN';
-                $country = 'Poland';
+                // Inicjalizacja domyślnego wiersza z mapowaniem pod nową wizualizację
+                $mapped = [
+                    'user' => '-',
+                    'sourceIp' => '-',
+                    'sourceHost' => '-',
+                    'destIp' => '-',
+                    'destHost' => '-',
+                    'subType' => '-',
+                    'timeGenerated' => '',
+                    'description' => '-',
+                    'eventSourceIp' => '-',
+                    'serviceName' => '-'
+                ];
 
                 foreach ($record as $key => $val) {
-                    $cleanVal = preg_replace('/\s*\([^)]*\)/', '', $val);
-                    if (stripos($key, 'User') !== false) {
-                        $user = $cleanVal;
-                        if (preg_match('/\(([\d\s]+)\)/', $val, $m)) {
-                            $eventsCount = (int)str_replace(' ', '', $m[1]);
-                        }
+                    // Elastyczne dopasowanie kolumn bez względu na spacje i pomocnicze dopiski "(Term)"
+                    if (stripos($key, 'Source.UserName') !== false) {
+                        $mapped['user'] = $val;
                     } elseif (stripos($key, 'Source.IP') !== false) {
-                        $sourceIp = $cleanVal;
-                    } elseif (stripos($key, 'Service') !== false) {
-                        $service = $cleanVal;
-                    } elseif (stripos($key, 'Source.Country') !== false) {
-                        $country = $cleanVal;
+                        $mapped['sourceIp'] = $val;
+                    } elseif (stripos($key, 'Source.HostName') !== false) {
+                        $mapped['sourceHost'] = $val;
+                    } elseif (stripos($key, 'Destination.IP') !== false) {
+                        $mapped['destIp'] = $val;
+                    } elseif (stripos($key, 'Destination.HostName') !== false) {
+                        $mapped['destHost'] = $val;
+                    } elseif (stripos($key, 'SubType') !== false) {
+                        $mapped['subType'] = $val;
+                    } elseif (stripos($key, 'Time.Generated') !== false) {
+                        $mapped['timeGenerated'] = $val;
+                    } elseif (stripos($key, 'Description') !== false) {
+                        $mapped['description'] = $val;
+                    } elseif (stripos($key, 'EventSource.IP') !== false) {
+                        $mapped['eventSourceIp'] = $val;
+                    } elseif (stripos($key, 'Service.Name') !== false) {
+                        $mapped['serviceName'] = $val;
                     }
                 }
 
-                if ($user || $sourceIp) {
-                    $uniqueIps[$sourceIp] = true;
-                    $ipCounts[$sourceIp] = ($ipCounts[$sourceIp] ?? 0) + $eventsCount;
-                    $data['meta']['suma_zdarzen'] += $eventsCount;
+                // Pobranie sumarycznej liczby prób logowań ze statystyk użytkownika
+                $userClean = preg_replace('/\s*\([^)]*\)/', '', $mapped['user']);
+                $ipClean = preg_replace('/\s*\([^)]*\)/', '', $mapped['sourceIp']);
+                
+                $rowEvents = 1;
+                if (preg_match('/\(([\d\s]+)\)/', $mapped['user'], $match)) {
+                    $rowEvents = (int)str_replace(' ', '', $match[1]);
+                }
 
-                    $data['scans'][] = [
-                        'source_ip' => $sourceIp ?: 'Nieznany IP',
-                        'dest_ip' => 'Serwer Uwierzytelniający',
-                        'dest_port' => 'Port autoryzacyjny',
-                        'protocol' => 'TCP',
-                        'service' => $service,
-                        'application' => 'User Failed Login',
-                        'source_country' => $country,
-                        'dest_country' => 'Poland',
-                        'danger_level' => $eventsCount > 30 ? 'Critical' : 'High',
-                        'events_count' => $eventsCount,
-                        'event_info' => 'Konto: ' . ($user ?: 'nieznany'),
-                        'event_desc' => 'Próba siłowego złamania hasła dla podanej nazwy użytkownika',
-                        'abuse_url' => 'https://www.abuseipdb.com/check/' . urlencode($sourceIp),
-                        'virustotal_url' => 'https://www.virustotal.com/gui/ip-address/' . urlencode($sourceIp),
-                        'whois_url' => 'https://www.whois.com/whois/' . urlencode($sourceIp)
-                    ];
+                if ($userClean !== '-' || $ipClean !== '-') {
+                    $uniqueIps[$ipClean] = true;
+                    $ipCounts[$ipClean] = ($ipCounts[$ipClean] ?? 0) + $rowEvents;
+                    $data['meta']['suma_zdarzen'] += $rowEvents;
+                    $data['records'][] = $mapped;
                 }
             }
         }
