@@ -40,6 +40,17 @@ class RaportWewnSkanujaceParser {
         return trim(preg_replace('/\s*\([\d\s,]+\)\s*$/u', '', $firstLine));
     }
 
+    private function cleanPortValue($text) {
+        $text = $this->normalizeText($text);
+        $firstLine = trim(explode("\n", $text)[0] ?? '');
+        if (preg_match('/^(\d+)/u', $firstLine, $m)) {
+            return $m[1];
+        }
+        $clean = preg_replace('/\s*-\s*\([\d\s,]+\)\s*$/u', '', $firstLine);
+        $clean = preg_replace('/\s*\([\d\s,]+\)\s*$/u', '', $clean);
+        return trim($clean);
+    }
+
     private function getDirectCells(DOMXPath $xpath, DOMNode $row) {
         $cells = [];
         foreach ($xpath->query('./td | ./th', $row) as $cell) {
@@ -71,6 +82,15 @@ class RaportWewnSkanujaceParser {
     private function extractCount($text, $default = 1) {
         if (preg_match('/\(([\d\s,]+)\)/u', (string)$text, $m)) {
             return (int)str_replace([' ', ','], '', $m[1]);
+        }
+        return $default;
+    }
+
+    private function extractEventMapValueCount($text, $default = 1) {
+        $text = $this->normalizeText($text);
+        if (preg_match('/\b([\d\s,]+)\b/u', $text, $m)) {
+            $count = (int)str_replace([' ', ','], '', $m[1]);
+            if ($count > 0) return $count;
         }
         return $default;
     }
@@ -235,16 +255,20 @@ class RaportWewnSkanujaceParser {
                         $timeList = $this->extractTimeGeneratedList($xpath, $cells[$iTime] ?? null);
                         $hourlyStats = $this->buildHourlyStats($timeList);
 
-                        $eventsCount = 1;
-                        if ($eventValueText !== '' && preg_match('/\d+/', $eventValueText, $m)) {
-                            $eventsCount = (int)$m[0];
-                        } elseif ($portText !== '') {
-                            $eventsCount = $this->extractCount($portText, 1);
-                        }
-                        $sumFromTimes = array_sum(array_column($timeList, 'count'));
-                        if ($sumFromTimes > 0) $eventsCount = $sumFromTimes;
+                        // Pełna liczba zdarzeń jest w kolumnie EventMap.Info (Value).
+                        // Destination.Port ma zwykle ten sam licznik w nawiasie, ale traktujemy go tylko jako fallback.
+                        // Time.Generated to lista widocznych timestampów / bucketów i NIE jest pełnym licznikiem.
+                        $eventMapValueCount = $this->extractEventMapValueCount($eventValueText, 0);
+                        $portEventsCount = $this->extractCount($portText, 0);
+                        $eventsCount = $eventMapValueCount > 0 ? $eventMapValueCount : ($portEventsCount > 0 ? $portEventsCount : 1);
+                        // WAŻNE: EventMap.Info (Value) / Destination.Port zawiera PEŁNĄ liczbę zdarzeń.
+                        // Time.Generated (Term) w raporcie Logsign jest listą TOP timestampów, więc często pokazuje
+                        // tylko część zdarzeń. Nie wolno nadpisywać events_count sumą timestampów, bo wtedy
+                        // 161 - (139) robi się np. 10, gdy w HTML widać tylko 10 timestampów po (1).
+                        $timestampEventsCount = array_sum(array_column($timeList, 'count'));
 
-                        $destPort = $this->cleanValue($portText) ?: 'Dowolny';
+                        $destPort = $this->cleanPortValue($portText) ?: 'Dowolny';
+                        $destPortRaw = $this->normalizeText($portText);
                         $sourceCountry = $this->cleanValue($sourceCountryText) ?: 'Reserved';
                         $destCountry = $this->cleanValue($destCountryText) ?: 'Reserved';
                         $protocol = $this->cleanValue($protocolText) ?: 'TCP';
@@ -261,6 +285,7 @@ class RaportWewnSkanujaceParser {
                             'source_ip' => $sourceIp,
                             'dest_ip' => $destIpText ?: 'Dowolny',
                             'dest_port' => $destPort,
+                            'dest_port_raw' => $destPortRaw,
                             'protocol' => $protocol,
                             'service' => $service,
                             'application' => $app,
@@ -270,10 +295,14 @@ class RaportWewnSkanujaceParser {
                             'destination_hostname' => $this->cleanValue($destHostText),
                             'danger_level' => $eventsCount > 5000 ? 'Critical' : ($eventsCount > 1000 ? 'High' : 'Medium'),
                             'events_count' => $eventsCount,
+                            'eventmap_value' => $this->normalizeText($eventValueText),
+                            'eventmap_value_count' => $eventMapValueCount,
+                            'port_events_count' => $portEventsCount,
                             'event_info' => $eventInfo,
                             'event_desc' => $eventDesc,
                             'time_generated' => $timeText,
                             'time_generated_list' => $timeList,
+                            'time_generated_visible_count' => $timestampEventsCount,
                             'hourly_stats' => $hourlyStats,
                             'abuse_url' => 'https://www.abuseipdb.com/check/' . urlencode($sourceIp),
                             'virustotal_url' => 'https://www.virustotal.com/gui/ip-address/' . urlencode($sourceIp),
