@@ -136,7 +136,7 @@ if (!function_exists('buildScanHourlyEvents')) {
     </div>
 </div>
 
-<!-- Sekcja Wykresów Podsumowujących Krajów i Usług -->
+<!-- Sekcja Wykresów Podsumowujących Krajów, Portów, Usług i Protokołów -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
     <!-- Top Kraje Pochodzenia Skanów -->
     <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
@@ -178,40 +178,83 @@ if (!function_exists('buildScanHourlyEvents')) {
         </div>
     </div>
 
-    <!-- Top Porty i Aplikacje -->
+    <!-- Top 5 Porty / Usługi / Protokoły -->
     <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
         <div class="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
-            <i data-lucide="cpu" class="h-5 w-5 text-red-600"></i>
-            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide">Najczęściej skanowane usługi</h3>
+            <i data-lucide="bar-chart-3" class="h-5 w-5 text-red-600"></i>
+            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide">TOP 5: Destination.Port / Service.Name / Protocol.Name</h3>
         </div>
-        <div class="space-y-4">
-            <?php
-            $serviceCounts = [];
-            foreach ($parsedData['scans'] as $scan) {
-                $s = ($scan['application'] ?: 'Inne') . ' (' . ($scan['dest_port'] ?: 'Dowolny') . ')';
-                $serviceCounts[$s] = ($serviceCounts[$s] ?? 0) + $scan['events_count'];
-            }
-            arsort($serviceCounts);
-            $topServices = array_slice($serviceCounts, 0, 4);
-            $maxServiceEvents = !empty($topServices) ? max($topServices) : 1;
 
-            if (empty($topServices)): ?>
-                <p class="text-xs text-slate-400 font-semibold py-4 text-center">Brak sklasyfikowanych usług</p>
-            <?php else: ?>
-                <?php foreach ($topServices as $serviceName => $count):
-                    $percent = min(100, round(($count / $maxServiceEvents) * 100));
+        <?php
+        if (!function_exists('scanStatLabel')) {
+            function scanStatLabel($value, $fallback = 'Nieznany') {
+                $value = html_entity_decode((string)$value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $value = str_replace(["Â ", '&nbsp;'], ' ', $value);
+                $value = preg_replace('/\s+/u', ' ', trim($value));
+                $value = preg_replace('/\s*\([\d\s,]+\)\s*$/u', '', $value);
+                $value = trim($value);
+                return $value !== '' ? $value : $fallback;
+            }
+        }
+
+        if (!function_exists('renderTopScanStats')) {
+            function renderTopScanStats($title, $items, $accentClass = 'text-red-600') {
+                arsort($items);
+                $items = array_slice($items, 0, 5, true);
+                $max = !empty($items) ? max($items) : 1;
                 ?>
-                    <div>
-                        <div class="flex justify-between text-xs font-semibold text-slate-700 mb-1">
-                            <span class="font-mono text-slate-900"><?php echo htmlspecialchars($serviceName); ?></span>
-                            <span class="text-red-600 font-bold"><?php echo number_format($count, 0, ',', ' '); ?> zd.</span>
-                        </div>
-                        <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                            <div class="h-full bg-gradient-to-r from-red-500 to-orange-500 rounded-full transition-all duration-500" style="width: <?php echo $percent; ?>%"></div>
-                        </div>
+                <div class="mb-5 last:mb-0">
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500"><?php echo htmlspecialchars($title); ?></h4>
+                        <span class="text-[10px] font-bold text-slate-400">TOP 5</span>
                     </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
+
+                    <?php if (empty($items)): ?>
+                        <p class="text-xs text-slate-400 font-semibold py-2">Brak danych</p>
+                    <?php else: ?>
+                        <div class="space-y-2.5">
+                            <?php foreach ($items as $label => $count):
+                                $percent = min(100, round(((int)$count / $max) * 100));
+                            ?>
+                                <div>
+                                    <div class="flex justify-between gap-3 text-xs font-semibold text-slate-700 mb-1">
+                                        <span class="font-mono text-slate-900 truncate" title="<?php echo htmlspecialchars($label); ?>"><?php echo htmlspecialchars($label); ?></span>
+                                        <span class="<?php echo $accentClass; ?> font-bold whitespace-nowrap"><?php echo number_format((int)$count, 0, ',', ' '); ?> zd.</span>
+                                    </div>
+                                    <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                                        <div class="h-full bg-gradient-to-r from-red-500 to-orange-500 rounded-full transition-all duration-500" style="width: <?php echo $percent; ?>%"></div>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <?php
+            }
+        }
+
+        $portCounts = [];
+        $serviceNameCounts = [];
+        $protocolNameCounts = [];
+
+        foreach ($parsedData['scans'] as $scan) {
+            $count = (int)($scan['events_count'] ?? 0);
+            if ($count <= 0) $count = 1;
+
+            $port = scanStatLabel($scan['dest_port'] ?? '', 'Dowolny');
+            $service = scanStatLabel($scan['service'] ?? '', 'Nieznana');
+            $protocol = scanStatLabel($scan['protocol'] ?? '', 'Nieznany');
+
+            $portCounts[$port] = ($portCounts[$port] ?? 0) + $count;
+            $serviceNameCounts[$service] = ($serviceNameCounts[$service] ?? 0) + $count;
+            $protocolNameCounts[$protocol] = ($protocolNameCounts[$protocol] ?? 0) + $count;
+        }
+        ?>
+
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
+            <?php renderTopScanStats('TOP 5 Destination.Port', $portCounts, 'text-red-600'); ?>
+            <?php renderTopScanStats('TOP 5 Service.Name', $serviceNameCounts, 'text-blue-600'); ?>
+            <?php renderTopScanStats('TOP 5 Protocol.Name', $protocolNameCounts, 'text-indigo-600'); ?>
         </div>
     </div>
 </div>

@@ -95,7 +95,7 @@ if ($selectedFile) {
             $reportType = 'transfer';
             $parser = new RaportParser($fullPath, $filterDay);
         } elseif (mb_stripos($filename, 'wewnetrzne_skanujace_porty') !== false) {
-            $reportType = 'skanowanie';
+            $reportType = 'skanowanie_port_host_wew';
             $parser = new RaportWewnSkanujaceParser($fullPath);
         } elseif (mb_stripos($filename, 'Hosty_z_bednymi_probami_logowania') !== false) {
             $reportType = 'skanowanie';
@@ -247,7 +247,10 @@ if ($selectedFile) {
                     case 'uzytkownicy_logowanie':
                         include __DIR__ . '/inc/view_uzytkownicy_logowanie.php';
                         break;
-                    case 'skanowanie':
+                    case 'skanowanie_port_host_wew':
+                        include __DIR__ . '/inc/view_skanowanie_port_host_wew.php';
+                        break;
+                    case 'skanowanie_port_host_zew':
                     default:
                         include __DIR__ . '/inc/view_skanowanie_port_host_zew.php';
                         break;
