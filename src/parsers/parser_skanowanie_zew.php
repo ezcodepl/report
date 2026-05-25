@@ -1,7 +1,16 @@
 <?php
 /**
  * Parser raportu Logsign: hosty zewnętrzne skanujące porty.
- * Wersja obsługuje wiele rekordów Source.IP oraz zagnieżdżone tabele z Time.Generated.
+ * Wersja pod układ raportu Source.IP -> tabela szczegółowa:
+ * Destination.Port, EventMap.Info (Value), Destination.IP, Protocol.Name,
+ * Service.Name, Application.Name, Source.Country, Destination.Country,
+ * EventMap.Info, EventSource.Description, Time.Generated.
+ *
+ * Ważne:
+ * - liczba zdarzeń pochodzi z EventMap.Info (Value), a dopiero fallback z Destination.Port,
+ * - Time.Generated służy tylko do rozkładu godzinowego i NIE nadpisuje liczby zdarzeń,
+ * - parser czyta wiele bloków Source.IP,
+ * - nie miesza komórek głównych z komórkami tabel zagnieżdżonych.
  */
 class RaportZewnSkanujaceParser {
     private $filePath;
@@ -21,16 +30,27 @@ class RaportZewnSkanujaceParser {
             'russia' => '🇷🇺', 'rosja' => '🇷🇺',
             'china' => '🇨🇳', 'chiny' => '🇨🇳',
             'netherlands' => '🇳🇱', 'holandia' => '🇳🇱',
-            'reserved' => '🏳️', 'unknown' => '🏳️'
+            'australia' => '🇦🇺',
+            'brazil' => '🇧🇷',
+            'canada' => '🇨🇦',
+            'france' => '🇫🇷',
+            'malaysia' => '🇲🇾',
+            'estonia' => '🇪🇪',
+            'guatemala' => '🇬🇹',
+            'israel' => '🇮🇱',
+            'italy' => '🇮🇹',
+            'reserved' => '🏳️',
+            'unknown' => '🏳️',
+            'nieznany' => '🏳️'
         ];
         return $countries[$countryName] ?? '🏳️';
     }
 
     private function normalizeText($text) {
         $text = html_entity_decode((string)$text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $text = str_replace(["\xc2\xa0", '&nbsp;'], ' ', $text);
-        $text = preg_replace('/[ \t]+/', ' ', $text);
-        $text = preg_replace('/\s*\n\s*/', "\n", $text);
+        $text = str_replace(["\xc2\xa0", '&nbsp;', 'Â '], ' ', $text);
+        $text = preg_replace('/[ \t]+/u', ' ', $text);
+        $text = preg_replace('/\s*\n\s*/u', "\n", $text);
         return trim($text);
     }
 
@@ -55,11 +75,15 @@ class RaportZewnSkanujaceParser {
         if ($leafTds->length > 0) {
             foreach ($leafTds as $td) {
                 $txt = $this->normalizeText($td->textContent);
-                if ($txt !== '') $lines[] = $txt;
+                if ($txt !== '') {
+                    $lines[] = $txt;
+                }
             }
         } else {
             $txt = $this->normalizeText($cell->textContent);
-            if ($txt !== '') $lines[] = $txt;
+            if ($txt !== '') {
+                $lines[] = $txt;
+            }
         }
 
         return $lines;
@@ -75,6 +99,17 @@ class RaportZewnSkanujaceParser {
             return (int)str_replace([' ', ','], '', $m[1]);
         }
         return $default;
+    }
+
+    private function extractEventValueCount($text, $fallback = 1) {
+        $text = $this->normalizeText($text);
+        if (preg_match('/^\s*([\d\s,]+)\s*$/u', $text, $m)) {
+            return (int)str_replace([' ', ','], '', $m[1]);
+        }
+        if (preg_match('/\b([\d][\d\s,]*)\b/u', $text, $m)) {
+            return (int)str_replace([' ', ','], '', $m[1]);
+        }
+        return $fallback;
     }
 
     private function extractTimeGeneratedList(DOMXPath $xpath, ?DOMNode $cell) {
@@ -114,16 +149,21 @@ class RaportZewnSkanujaceParser {
         $headers = $this->getDirectCells($xpath, $headerRow);
         foreach ($headers as $i => $th) {
             $name = $this->normalizeText($th->textContent);
-            $name = preg_replace('/\s+/', ' ', $name);
-            if ($name !== '') $map[$name] = $i;
+            $name = preg_replace('/\s+/u', ' ', $name);
+            if ($name !== '') {
+                $map[$name] = $i;
+            }
         }
+
         return $map;
     }
 
     private function idx(array $headerMap, array $needles) {
         foreach ($headerMap as $name => $i) {
             foreach ($needles as $needle) {
-                if (stripos($name, $needle) !== false) return $i;
+                if (stripos($name, $needle) !== false) {
+                    return $i;
+                }
             }
         }
         return null;
@@ -153,8 +193,8 @@ class RaportZewnSkanujaceParser {
         $uniqueIps = [];
         $ipCounts = [];
 
-        // Każdy blok hosta zaczyna się od komórki z IP w tabeli nadrzędnej.
-        // Następna komórka / sąsiednia część zawiera tabelę szczegółową z Destination.Port ... Time.Generated.
+        // Szukamy komórek z IP, ale akceptujemy tylko te, których wiersz zawiera tabelę szczegółową z Time.Generated.
+        // Dzięki temu Destination.IP nie zostanie błędnie uznane za Source.IP.
         $sourceCells = $xpath->query('//td[not(.//table)]');
 
         foreach ($sourceCells as $sourceCell) {
@@ -164,16 +204,16 @@ class RaportZewnSkanujaceParser {
             }
 
             $sourceIp = $ipMatch[0];
-            if (!filter_var($sourceIp, FILTER_VALIDATE_IP)) continue;
+            if (!filter_var($sourceIp, FILTER_VALIDATE_IP)) {
+                continue;
+            }
 
             $hostRow = $sourceCell->parentNode;
             if (!$hostRow) continue;
 
-            // Szukamy tabel szczegółowych w tym samym wierszu/bloku hosta.
             $detailTables = $xpath->query('.//table[.//th[contains(normalize-space(.), "Time.Generated")]]', $hostRow);
             if ($detailTables->length === 0) {
-                // Fallback: najbliższa tabela po komórce Source.IP w dokumencie.
-                $detailTables = $xpath->query('following::table[.//th[contains(normalize-space(.), "Time.Generated")]][1]', $sourceCell);
+                continue;
             }
 
             foreach ($detailTables as $detailTable) {
@@ -193,12 +233,8 @@ class RaportZewnSkanujaceParser {
                 $iTime = $this->idx($headerMap, ['Time.Generated']);
 
                 $bodyRows = $xpath->query('./tbody/tr', $detailTable);
-                if ($bodyRows->length === 0) {
-                    $bodyRows = $xpath->query('.//tbody/tr', $detailTable);
-                }
 
                 foreach ($bodyRows as $detailRow) {
-                    // Bierzemy tylko bezpośrednie komórki tego wiersza, bez komórek zagnieżdżonych tabel.
                     $cells = $this->getDirectCells($xpath, $detailRow);
                     if (count($cells) < 2) continue;
 
@@ -213,18 +249,15 @@ class RaportZewnSkanujaceParser {
                     $eventInfoText = $this->getCellText($xpath, $cells[$iEventInfo] ?? null);
                     $eventDescText = $this->getCellText($xpath, $cells[$iEventDesc] ?? null);
                     $timeText = $this->getCellText($xpath, $cells[$iTime] ?? null);
+
                     $timeList = $this->extractTimeGeneratedList($xpath, $cells[$iTime] ?? null);
                     $hourlyStats = $this->buildHourlyStats($timeList);
 
                     $eventsCount = 1;
-                    if ($eventValueText !== '' && preg_match('/\d+/', $eventValueText, $m)) {
-                        $eventsCount = (int)$m[0];
+                    if ($eventValueText !== '') {
+                        $eventsCount = $this->extractEventValueCount($eventValueText, 1);
                     } elseif ($portText !== '') {
                         $eventsCount = $this->extractCount($portText, 1);
-                    }
-                    if (!empty($timeList)) {
-                        $sumFromTimes = array_sum(array_column($timeList, 'count'));
-                        if ($sumFromTimes > 0) $eventsCount = $sumFromTimes;
                     }
 
                     $destPort = $this->cleanValue($portText) ?: 'Dowolny';
@@ -244,11 +277,19 @@ class RaportZewnSkanujaceParser {
                         'source_ip' => $sourceIp,
                         'dest_ip' => $destIpText ?: 'Dowolny',
                         'dest_port' => $destPort,
+                        'dest_port_raw' => $portText,
                         'protocol' => $protocol,
+                        'protocol_raw' => $protocolText,
                         'service' => $service,
+                        'service_raw' => $serviceText,
                         'application' => $app,
+                        'application_raw' => $appText,
                         'source_country' => $sourceCountry,
+                        'source_country_raw' => $sourceCountryText,
                         'dest_country' => $destCountry,
+                        'dest_country_raw' => $destCountryText,
+                        'event_value_count' => $eventsCount,
+                        'event_value_raw' => $eventValueText,
                         'danger_level' => $eventsCount > 5000 ? 'Critical' : ($eventsCount > 1000 ? 'High' : 'Medium'),
                         'events_count' => $eventsCount,
                         'event_info' => $eventInfo,
@@ -264,7 +305,7 @@ class RaportZewnSkanujaceParser {
             }
         }
 
-        // Usuwanie ewentualnych duplikatów wynikających z fallbacków DOM.
+        // Dedup, gdyby raport miał zduplikowane bloki.
         $seen = [];
         $deduped = [];
         $data['meta']['suma_zdarzen'] = 0;
@@ -272,9 +313,10 @@ class RaportZewnSkanujaceParser {
         $uniqueIps = [];
 
         foreach ($data['scans'] as $scan) {
-            $key = $scan['source_ip'] . '|' . $scan['dest_port'] . '|' . md5($scan['dest_ip'] . '|' . $scan['time_generated']);
+            $key = $scan['source_ip'] . '|' . $scan['dest_port'] . '|' . md5($scan['dest_ip'] . '|' . $scan['event_value_raw'] . '|' . $scan['time_generated']);
             if (isset($seen[$key])) continue;
             $seen[$key] = true;
+
             $deduped[] = $scan;
             $uniqueIps[$scan['source_ip']] = true;
             $ipCounts[$scan['source_ip']] = ($ipCounts[$scan['source_ip']] ?? 0) + (int)$scan['events_count'];

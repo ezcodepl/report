@@ -12,6 +12,22 @@ if (!function_exists('buildScanHourlyEvents')) {
      * 2026-05-21 14:03:49 (15)
      */
     function buildScanHourlyEvents($scan) {
+        if (!empty($scan['hourly_stats']) && is_array($scan['hourly_stats'])) {
+            $hourlyEvents = array_fill(0, 24, 0);
+            foreach ($scan['hourly_stats'] as $hour => $count) {
+                $hour = (int)$hour;
+                if ($hour >= 0 && $hour <= 23) {
+                    $hourlyEvents[$hour] = (int)$count;
+                }
+            }
+            return [
+                'hours' => $hourlyEvents,
+                'total' => array_sum($hourlyEvents),
+                'max' => max($hourlyEvents) ?: 1,
+                'raw' => (string)($scan['time_generated'] ?? ''),
+            ];
+        }
+
         $hourlyEvents = array_fill(0, 24, 0);
         $rawChunks = [];
 
@@ -120,41 +136,165 @@ if (!function_exists('buildScanHourlyEvents')) {
     </div>
 </div>
 
-<!-- Sekcja Wykresów Podsumowujących Krajów i Usług -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+<!-- Sekcja Wykresów Podsumowujących Krajów, Portów, Usług i Protokołów -->
+<?php
+if (!function_exists('zewScanNormalizeStatText')) {
+    function zewScanNormalizeStatText($value) {
+        $value = html_entity_decode((string)$value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $value = str_replace(["\xC2\xA0", 'Â ', '&nbsp;'], ' ', $value);
+        $value = preg_replace('/\s+/u', ' ', trim($value));
+        return trim($value);
+    }
+}
+
+if (!function_exists('zewScanCleanLabel')) {
+    function zewScanCleanLabel($value, $fallback = 'Nieznany') {
+        $value = zewScanNormalizeStatText($value);
+        $value = preg_replace('/\s*\([\d\s,]+\)\s*$/u', '', $value);
+        $value = trim($value);
+        return $value !== '' ? $value : $fallback;
+    }
+}
+
+if (!function_exists('zewScanCounter')) {
+    function zewScanCounter($scan) {
+        $count = (int)($scan['event_value_count'] ?? $scan['events_count'] ?? 0);
+        return $count > 0 ? $count : 1;
+    }
+}
+
+if (!function_exists('zewScanAddTermCounts')) {
+    /**
+     * Dodaje liczniki z tekstu typu:
+     * United States (114)
+     * Australia (8)
+     * albo z pojedynczej wartości bez nawiasu.
+     */
+    function zewScanAddTermCounts(&$target, $rawText, $fallbackCount = 1, $fallbackLabel = 'Nieznany', $skipReserved = false) {
+        $rawText = zewScanNormalizeStatText($rawText);
+
+        if ($rawText === '') {
+            $target[$fallbackLabel] = ($target[$fallbackLabel] ?? 0) + max(1, (int)$fallbackCount);
+            return;
+        }
+
+        preg_match_all('/([^\(\)\n]+?)\s*\(([\d\s,]+)\)/u', $rawText, $matches, PREG_SET_ORDER);
+
+        if (!empty($matches)) {
+            foreach ($matches as $match) {
+                $label = zewScanCleanLabel($match[1], $fallbackLabel);
+                if ($skipReserved && strcasecmp($label, 'Reserved') === 0) {
+                    continue;
+                }
+
+                $count = (int)str_replace([' ', ','], '', $match[2]);
+                if ($count <= 0) $count = 1;
+
+                $target[$label] = ($target[$label] ?? 0) + $count;
+            }
+            return;
+        }
+
+        $label = zewScanCleanLabel($rawText, $fallbackLabel);
+        if ($skipReserved && strcasecmp($label, 'Reserved') === 0) {
+            return;
+        }
+
+        $target[$label] = ($target[$label] ?? 0) + max(1, (int)$fallbackCount);
+    }
+}
+
+if (!function_exists('zewScanRenderBarStats')) {
+    function zewScanRenderBarStats($title, $items, $accentClass = 'text-red-600', $barClass = 'from-red-500 to-orange-500') {
+        arsort($items);
+        $items = array_slice($items, 0, 5, true);
+        $max = !empty($items) ? max($items) : 1;
+        ?>
+        <div class="mb-5 last:mb-0">
+            <div class="mb-2 flex items-center justify-between">
+                <h4 class="text-[11px] font-extrabold uppercase tracking-wider text-slate-500"><?php echo htmlspecialchars($title); ?></h4>
+                <span class="text-[10px] font-bold text-slate-400">TOP 5</span>
+            </div>
+
+            <?php if (empty($items)): ?>
+                <p class="py-2 text-xs font-semibold text-slate-400">Brak danych</p>
+            <?php else: ?>
+                <div class="space-y-2.5">
+                    <?php foreach ($items as $label => $count):
+                        $percent = min(100, round(((int)$count / $max) * 100));
+                    ?>
+                        <div>
+                            <div class="mb-1 flex justify-between gap-3 text-xs font-semibold text-slate-700">
+                                <span class="truncate font-mono text-slate-900" title="<?php echo htmlspecialchars($label); ?>"><?php echo htmlspecialchars($label); ?></span>
+                                <span class="<?php echo $accentClass; ?> whitespace-nowrap font-bold"><?php echo number_format((int)$count, 0, ',', ' '); ?> zd.</span>
+                            </div>
+                            <div class="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                                <div class="h-full rounded-full bg-gradient-to-r <?php echo $barClass; ?> transition-all duration-500" style="width: <?php echo $percent; ?>%"></div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+}
+
+$sourceCountryCounts = [];
+$portCounts = [];
+$serviceNameCounts = [];
+$protocolNameCounts = [];
+
+foreach ($parsedData['scans'] as $scan) {
+    $eventCount = zewScanCounter($scan);
+
+    // Dla hostów zewnętrznych geolokalizacja ma pokazywać Source.Country.
+    zewScanAddTermCounts(
+        $sourceCountryCounts,
+        $scan['source_country_raw'] ?? $scan['source_country'] ?? '',
+        $eventCount,
+        'Nieznany',
+        true
+    );
+
+    $port = zewScanCleanLabel($scan['dest_port_raw'] ?? $scan['dest_port'] ?? '', 'Dowolny');
+    $service = zewScanCleanLabel($scan['service_raw'] ?? $scan['service'] ?? '', 'Nieznana');
+    $protocol = zewScanCleanLabel($scan['protocol_raw'] ?? $scan['protocol'] ?? '', 'Nieznany');
+
+    $portCounts[$port] = ($portCounts[$port] ?? 0) + $eventCount;
+    $serviceNameCounts[$service] = ($serviceNameCounts[$service] ?? 0) + $eventCount;
+    $protocolNameCounts[$protocol] = ($protocolNameCounts[$protocol] ?? 0) + $eventCount;
+}
+
+arsort($sourceCountryCounts);
+$topCountries = array_slice($sourceCountryCounts, 0, 5, true);
+$maxCountryEvents = !empty($topCountries) ? max($topCountries) : 1;
+?>
+
+<div class="grid grid-cols-1 gap-6 lg:grid-cols-3 mb-8">
     <!-- Top Kraje Pochodzenia Skanów -->
-    <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-        <div class="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
+    <div class="lg:col-span-1 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+        <div class="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
             <i data-lucide="globe-2" class="h-5 w-5 text-indigo-600"></i>
-            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide">Geolokalizacja Incydentów (Kraje)</h3>
+            <h3 class="text-sm font-bold uppercase tracking-wide text-slate-900">Source.Country — TOP kraje źródłowe</h3>
         </div>
         <div class="space-y-4">
-            <?php
-            $countryCounts = [];
-            foreach ($parsedData['scans'] as $scan) {
-                $c = $scan['source_country'] ?: 'Nieznany';
-                $countryCounts[$c] = ($countryCounts[$c] ?? 0) + $scan['events_count'];
-            }
-            arsort($countryCounts);
-            $topCountries = array_slice($countryCounts, 0, 4);
-            $maxCountryEvents = !empty($topCountries) ? max($topCountries) : 1;
-
-            if (empty($topCountries)): ?>
-                <p class="text-xs text-slate-400 font-semibold py-4 text-center">Brak szczegółowych danych geolokalizacyjnych</p>
+            <?php if (empty($topCountries)): ?>
+                <p class="py-4 text-center text-xs font-semibold text-slate-400">Brak szczegółowych danych geolokalizacyjnych</p>
             <?php else: ?>
                 <?php foreach ($topCountries as $countryName => $count):
                     $percent = min(100, round(($count / $maxCountryEvents) * 100));
                 ?>
                     <div>
-                        <div class="flex justify-between text-xs font-semibold text-slate-700 mb-1">
+                        <div class="mb-1 flex justify-between text-xs font-semibold text-slate-700">
                             <span class="flex items-center gap-1.5">
                                 <span class="text-lg"><?php echo $parser->getCountryFlag($countryName); ?></span>
                                 <span><?php echo htmlspecialchars($countryName); ?></span>
                             </span>
-                            <span class="text-indigo-600 font-bold"><?php echo number_format($count, 0, ',', ' '); ?> zd.</span>
+                            <span class="font-bold text-indigo-600"><?php echo number_format($count, 0, ',', ' '); ?> zd.</span>
                         </div>
-                        <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                            <div class="h-full bg-gradient-to-r from-indigo-500 to-blue-600 rounded-full transition-all duration-500" style="width: <?php echo $percent; ?>%"></div>
+                        <div class="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                            <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-blue-600 transition-all duration-500" style="width: <?php echo $percent; ?>%"></div>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -162,43 +302,21 @@ if (!function_exists('buildScanHourlyEvents')) {
         </div>
     </div>
 
-    <!-- Top Porty i Aplikacje -->
-    <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-        <div class="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
-            <i data-lucide="cpu" class="h-5 w-5 text-red-600"></i>
-            <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wide">Najczęściej Atakowane Usługi</h3>
+    <!-- Top 5 Porty / Usługi / Protokoły -->
+    <div class="lg:col-span-2 rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+        <div class="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
+            <i data-lucide="bar-chart-3" class="h-5 w-5 text-red-600"></i>
+            <h3 class="text-sm font-bold uppercase tracking-wide text-slate-900">TOP 5: Destination.Port / Service.Name / Protocol.Name</h3>
         </div>
-        <div class="space-y-4">
-            <?php
-            $serviceCounts = [];
-            foreach ($parsedData['scans'] as $scan) {
-                $s = ($scan['application'] ?: 'Inne') . ' (' . ($scan['dest_port'] ?: 'Dowolny') . ')';
-                $serviceCounts[$s] = ($serviceCounts[$s] ?? 0) + $scan['events_count'];
-            }
-            arsort($serviceCounts);
-            $topServices = array_slice($serviceCounts, 0, 4);
-            $maxServiceEvents = !empty($topServices) ? max($topServices) : 1;
 
-            if (empty($topServices)): ?>
-                <p class="text-xs text-slate-400 font-semibold py-4 text-center">Brak sklasyfikowanych usług</p>
-            <?php else: ?>
-                <?php foreach ($topServices as $serviceName => $count):
-                    $percent = min(100, round(($count / $maxServiceEvents) * 100));
-                ?>
-                    <div>
-                        <div class="flex justify-between text-xs font-semibold text-slate-700 mb-1">
-                            <span class="font-mono text-slate-900"><?php echo htmlspecialchars($serviceName); ?></span>
-                            <span class="text-red-600 font-bold"><?php echo number_format($count, 0, ',', ' '); ?> zd.</span>
-                        </div>
-                        <div class="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                            <div class="h-full bg-gradient-to-r from-red-500 to-orange-500 rounded-full transition-all duration-500" style="width: <?php echo $percent; ?>%"></div>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
+        <div class="grid grid-cols-1 gap-5 xl:grid-cols-3">
+            <?php zewScanRenderBarStats('TOP 5 Destination.Port', $portCounts, 'text-red-600', 'from-red-500 to-orange-500'); ?>
+            <?php zewScanRenderBarStats('TOP 5 Service.Name', $serviceNameCounts, 'text-blue-600', 'from-blue-500 to-indigo-500'); ?>
+            <?php zewScanRenderBarStats('TOP 5 Protocol.Name', $protocolNameCounts, 'text-indigo-600', 'from-indigo-500 to-violet-500'); ?>
         </div>
     </div>
 </div>
+
 
 <!-- Tabela Skonfigurowana dla Skanowania -->
 <div class="mb-8 rounded-2xl border border-slate-150 bg-white p-6 shadow-sm">
@@ -206,9 +324,9 @@ if (!function_exists('buildScanHourlyEvents')) {
         <div>
             <h3 class="text-base font-bold text-slate-950 flex items-center gap-2">
                 <span class="h-2.5 w-2.5 rounded-full bg-red-600 animate-ping"></span>
-                Analiza Raportu Zdarzeń i Naruszenia Reguł Bezpieczeństwa Firewall / Auth
+                Hosty zewnętrzne skanujące porty — analiza zdarzeń Firewall / Auth
             </h3>
-            <p class="text-xs text-slate-400 mt-1">Zewnętrzne lub wewnętrzne hosty generujące próby połączeń, skanowań lub nieudanych logowań.</p>
+            <p class="text-xs text-slate-400 mt-1">Hosty zewnętrzne generujące próby skanowania portów i nietypowe połączenia.</p>
         </div>
         <!-- Dynamiczne Filtrowanie -->
         <div class="relative max-w-xs w-full">
