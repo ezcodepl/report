@@ -1,713 +1,346 @@
 <!-- ======================================================== -->
-<!-- WIDOK: RAPORT BŁĘDNYCH PRÓB LOGOWANIA UŻYTKOWNIKÓW      -->
+<!-- DASHBOARD: BŁĘDNE PRÓBY LOGOWANIA UŻYTKOWNIKÓW          -->
+<!-- GUI: Command Center / kafelki / TOP5 / tabela TOP10     -->
 <!-- ======================================================== -->
 
-<!-- KARTY STATYSTYK (KPI) -->
-<div class="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
-    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-        <div class="p-3.5 bg-red-50 text-red-600 rounded-xl">
-            <i data-lucide="activity" class="w-6 h-6"></i>
-        </div>
-        <div>
-            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Suma prób</p>
-            <p id="kpi-total-attempts" class="text-2xl font-bold text-slate-900 mt-1">--</p>
-        </div>
-    </div>
+<?php
+$records = $parsedData['records'] ?? [];
 
-    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-        <div class="p-3.5 bg-blue-50 text-blue-600 rounded-xl">
-            <i data-lucide="users" class="w-6 h-6"></i>
-        </div>
-        <div>
-            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Unikalni Użytkownicy</p>
-            <p id="kpi-unique-users" class="text-2xl font-bold text-slate-900 mt-1">--</p>
-        </div>
-    </div>
+if (!function_exists('ulg_norm')) {
+    function ulg_norm($value, $fallback = '-') {
+        $value = html_entity_decode((string)$value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $value = str_replace(["\xC2\xA0", '&nbsp;', 'Â '], ' ', $value);
+        $value = preg_replace('/\s+/u', ' ', trim($value));
+        $value = preg_replace('/\s*[-–]?\s*\([\d\s,]+\)\s*$/u', '', $value);
+        return $value !== '' ? trim($value) : $fallback;
+    }
+}
 
-    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-        <div class="p-3.5 bg-orange-50 text-orange-600 rounded-xl">
-            <i data-lucide="globe" class="w-6 h-6"></i>
-        </div>
-        <div>
-            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Unikalne IP Źródłowe</p>
-            <p id="kpi-unique-ips" class="text-2xl font-bold text-slate-900 mt-1">--</p>
-        </div>
-    </div>
+if (!function_exists('ulg_add_stat')) {
+    function ulg_add_stat(&$bucket, $label, $count) {
+        $label = ulg_norm($label, '-');
+        if ($label === '-') return;
+        $bucket[$label] = ($bucket[$label] ?? 0) + max(1, (int)$count);
+    }
+}
 
-    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-        <div class="p-3.5 bg-purple-50 text-purple-600 rounded-xl">
-            <i data-lucide="server" class="w-6 h-6"></i>
+if (!function_exists('ulg_build_hourly')) {
+    function ulg_build_hourly($record) {
+        $hours = array_fill(0, 24, 0);
+        if (!empty($record['hourly_stats']) && is_array($record['hourly_stats'])) {
+            foreach ($record['hourly_stats'] as $h => $c) {
+                $h = (int)$h;
+                if ($h >= 0 && $h <= 23) $hours[$h] += (int)$c;
+            }
+        } else {
+            $raw = (string)($record['time_generated'] ?? '');
+            if (preg_match_all('/\d{4}-\d{2}-\d{2}\s+(\d{2}):\d{2}:\d{2}(?:\s*\(([\d\s,]+)\))?/u', $raw, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $m) {
+                    $h = (int)$m[1];
+                    $count = isset($m[2]) && trim($m[2]) !== '' ? (int)str_replace([' ', ','], '', $m[2]) : 1;
+                    if ($h >= 0 && $h <= 23) $hours[$h] += max(1, $count);
+                }
+            }
+        }
+        return $hours;
+    }
+}
+
+if (!function_exists('ulg_merge_hourly')) {
+    function ulg_merge_hourly(&$target, $source) {
+        for ($i = 0; $i < 24; $i++) $target[$i] += (int)($source[$i] ?? 0);
+    }
+}
+
+if (!function_exists('ulg_render_bar_list')) {
+    function ulg_render_bar_list($items, $accent = 'indigo', $unit = 'prób') {
+        arsort($items);
+        $items = array_slice($items, 0, 5, true);
+        $max = !empty($items) ? max($items) : 1;
+        $bar = $accent === 'sky' ? 'bg-sky-500' : ($accent === 'rose' ? 'bg-rose-500' : 'bg-indigo-600');
+        $badge = $accent === 'sky' ? 'bg-sky-50 text-sky-700 border-sky-100' : ($accent === 'rose' ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-indigo-50 text-indigo-700 border-indigo-100');
+        if (empty($items)) {
+            echo '<p class="py-4 text-center text-xs font-semibold text-slate-400">Brak danych</p>';
+            return;
+        }
+        $idx = 1;
+        foreach ($items as $label => $count) {
+            $pct = min(100, round(((int)$count / $max) * 100));
+            ?>
+            <div class="space-y-1">
+                <div class="flex items-center justify-between gap-3 text-sm">
+                    <span class="flex min-w-0 items-center gap-2 font-semibold text-slate-700">
+                        <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-slate-200 bg-slate-100 text-[10px] font-bold text-slate-500"><?php echo $idx++; ?></span>
+                        <span class="truncate" title="<?php echo htmlspecialchars($label); ?>"><?php echo htmlspecialchars($label); ?></span>
+                    </span>
+                    <span class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-extrabold <?php echo $badge; ?>"><?php echo number_format((int)$count, 0, ',', ' '); ?> <?php echo $unit; ?></span>
+                </div>
+                <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div class="h-full rounded-full <?php echo $bar; ?>" style="width: <?php echo $pct; ?>%"></div>
+                </div>
+            </div>
+            <?php
+        }
+    }
+}
+
+$userCounts = [];
+$hostCounts = [];
+$ipCounts = [];
+$serviceCounts = [];
+$subTypeCounts = [];
+$globalHourly = array_fill(0, 24, 0);
+$uniqueUsers = [];
+$uniqueHosts = [];
+$uniqueIps = [];
+$totalEvents = 0;
+$failedEvents = 0;
+$userHourly = [];
+$userMeta = [];
+
+foreach ($records as $record) {
+    $events = max(1, (int)($record['events_count'] ?? 1));
+    $user = ulg_norm($record['user'] ?? '-');
+    $host = ulg_norm($record['source_host'] ?? '-');
+    $ip = ulg_norm($record['source_ip'] ?? '-');
+    $service = ulg_norm($record['service_name'] ?? '-');
+    $subType = ulg_norm($record['sub_type'] ?? '-');
+    $hours = ulg_build_hourly($record);
+
+    $totalEvents += $events;
+    if (preg_match('/fail|error|deny|lock|bad|invalid|wrong/i', $subType)) $failedEvents += $events;
+    ulg_add_stat($userCounts, $user, $events);
+    ulg_add_stat($hostCounts, $host, $events);
+    ulg_add_stat($ipCounts, $ip, $events);
+    ulg_add_stat($serviceCounts, $service, $events);
+    ulg_add_stat($subTypeCounts, $subType, $events);
+    ulg_merge_hourly($globalHourly, $hours);
+
+    if ($user !== '-') {
+        $uniqueUsers[$user] = true;
+        if (!isset($userHourly[$user])) $userHourly[$user] = array_fill(0, 24, 0);
+        ulg_merge_hourly($userHourly[$user], $hours);
+        if (!isset($userMeta[$user])) {
+            $userMeta[$user] = [
+                'user' => $user,
+                'source_ip' => $ip,
+                'source_host' => $host,
+                'dest_ip' => ulg_norm($record['dest_ip'] ?? '-'),
+                'dest_host' => ulg_norm($record['dest_host'] ?? '-'),
+                'service_name' => $service,
+                'description' => ulg_norm($record['description'] ?? '-'),
+                'events_count' => 0
+            ];
+        }
+        $userMeta[$user]['events_count'] += $events;
+    }
+    if ($host !== '-') $uniqueHosts[$host] = true;
+    if ($ip !== '-') $uniqueIps[$ip] = true;
+}
+
+$peakHour = array_search(max($globalHourly), $globalHourly, true);
+$peakHourText = sprintf('%02d:00', $peakHour === false ? 0 : $peakHour);
+$recordsCount = count($records);
+
+$modalUsers = [];
+foreach ($userMeta as $user => $meta) {
+    $meta['hourly'] = $userHourly[$user] ?? array_fill(0, 24, 0);
+    $modalUsers[$user] = $meta;
+}
+?>
+
+<div class="min-h-screen bg-slate-50 pb-10 text-slate-800">
+    <div class="mx-auto max-w-[1600px] px-4 pt-6 sm:px-6 lg:px-8">
+
+      
+
+        <section class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="rounded-xl bg-indigo-50 p-3 text-indigo-600"><i data-lucide="file-text" class="h-6 w-6"></i></div>
+                <div><p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Wszystkie zdarzenia</p><p class="mt-0.5 text-2xl font-bold text-slate-900"><?php echo number_format($totalEvents, 0, ',', ' '); ?></p></div>
+            </div>
+            <div class="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="rounded-xl bg-emerald-50 p-3 text-emerald-600"><i data-lucide="users" class="h-6 w-6"></i></div>
+                <div><p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Unikalni użytkownicy</p><p class="mt-0.5 text-2xl font-bold text-slate-900"><?php echo number_format(count($uniqueUsers), 0, ',', ' '); ?></p></div>
+            </div>
+            <div class="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="rounded-xl bg-rose-50 p-3 text-rose-600"><i data-lucide="alert-triangle" class="h-6 w-6"></i></div>
+                <div><p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Błędne logowania</p><p class="mt-0.5 text-2xl font-bold text-slate-900"><?php echo number_format($failedEvents ?: $totalEvents, 0, ',', ' '); ?></p></div>
+            </div>
+            <div class="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="rounded-xl bg-amber-50 p-3 text-amber-600"><i data-lucide="clock" class="h-6 w-6"></i></div>
+                <div><p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Szczyt godzinowy</p><p class="mt-0.5 text-2xl font-bold text-slate-900"><?php echo $peakHourText; ?></p></div>
+            </div>
+        </section>
+
+        <div class="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-12">
+            <div class="flex flex-col gap-6 lg:col-span-5">
+                <div class="flex-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div class="mb-6 flex items-center justify-between">
+                        <div><h2 class="text-lg font-bold tracking-tight text-slate-900">Top 5: Aktywni Użytkownicy</h2><p class="text-xs text-slate-500">Największa częstotliwość prób uwierzytelnienia</p></div>
+                        <span class="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">Source.UserName</span>
+                    </div>
+                    <div class="space-y-4"><?php ulg_render_bar_list($userCounts, 'indigo', 'prób'); ?></div>
+                </div>
+                <div class="flex-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div class="mb-6 flex items-center justify-between">
+                        <div><h2 class="text-lg font-bold tracking-tight text-slate-900">Top 5: Hosty Źródłowe</h2><p class="text-xs text-slate-500">Hosty generujące najwięcej zdarzeń</p></div>
+                        <span class="rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">Source.HostName</span>
+                    </div>
+                    <div class="space-y-4"><?php ulg_render_bar_list($hostCounts, 'sky', 'prób'); ?></div>
+                </div>
+            </div>
+
+            <div class="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-7">
+                <div>
+                    <div class="mb-6 flex items-center justify-between">
+                        <div><h2 class="text-lg font-bold tracking-tight text-slate-900">Profil Godzinowy Incydentów</h2><p class="text-xs text-slate-500">Siatka 24-godzinna aktywności ze stopniem intensywności</p></div>
+                        <span class="rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">Zdarzenia / godz.</span>
+                    </div>
+                    <div class="mb-6 flex w-fit items-center gap-3 rounded-xl border border-slate-200/60 bg-slate-50 p-3 text-xs text-slate-600">
+                        <span class="font-medium text-slate-500">Intensywność:</span><span class="h-3.5 w-3.5 rounded border border-slate-200 bg-slate-100"></span><span>0</span><span class="h-3.5 w-3.5 rounded border border-indigo-100 bg-indigo-50"></span><span>Niska</span><span class="h-3.5 w-3.5 rounded border border-indigo-300 bg-indigo-200"></span><span>Średnia</span><span class="h-3.5 w-3.5 rounded bg-indigo-600 shadow-[0_0_6px_rgba(79,70,229,0.3)]"></span><span>Wysoka</span>
+                    </div>
+                    <div class="grid grid-cols-4 gap-3 sm:grid-cols-6 xl:grid-cols-8">
+                        <?php $maxGlobal = max($globalHourly) ?: 1; for ($h = 0; $h < 24; $h++): $count = (int)$globalHourly[$h]; $ratio = $count / $maxGlobal; $pct = $totalEvents > 0 ? round(($count / $totalEvents) * 100, 1) : 0; $bg = 'bg-slate-100 border-slate-200 text-slate-500'; $sub = 'text-slate-400'; if ($count > 0 && $ratio <= .3) { $bg = 'bg-indigo-50 border-indigo-100 text-indigo-700'; $sub = 'text-indigo-500'; } elseif ($count > 0 && $ratio <= .7) { $bg = 'bg-indigo-100 border-indigo-200 text-indigo-800'; $sub = 'text-indigo-600'; } elseif ($count > 0) { $bg = 'bg-indigo-600 border-indigo-600 text-white font-bold shadow-md shadow-indigo-600/20'; $sub = 'text-indigo-100'; } ?>
+                            <div class="flex h-[85px] flex-col justify-between rounded-xl border p-3 transition hover:scale-105 <?php echo $bg; ?>" title="Udział: <?php echo $pct; ?>% wszystkich zdarzeń">
+                                <span class="text-xs font-semibold uppercase tracking-wider opacity-75"><?php echo sprintf('%02d:00', $h); ?></span>
+                                <div class="mt-1 flex items-baseline justify-between"><span class="text-lg font-black"><?php echo number_format($count, 0, ',', ' '); ?></span><span class="text-[10px] font-medium <?php echo $sub; ?>"><?php echo $pct; ?>%</span></div>
+                            </div>
+                        <?php endfor; ?>
+                    </div>
+                </div>
+                <div class="mt-6 flex flex-col justify-between gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500 sm:flex-row sm:items-center">
+                    <span>Wskazówka: kliknij „Szczegóły”, żeby zobaczyć profil godzinowy wybranego usera.</span>
+                    <span class="font-semibold text-indigo-600">Profil globalny</span>
+                </div>
+            </div>
         </div>
-        <div>
-            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Główny Cel Ataku</p>
-            <p id="kpi-top-dest" class="text-md font-bold text-slate-900 mt-1 truncate max-w-[180px]">--</p>
+
+        <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div class="flex flex-col items-start justify-between gap-4 border-b border-slate-200 bg-white p-6 sm:flex-row sm:items-center">
+                <div>
+                    <div class="flex items-center gap-3"><h2 class="text-lg font-bold tracking-tight text-slate-900">Dziennik Zdarzeń</h2><span id="loginBadgeCount" class="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">Top 10</span></div>
+                    <p class="mt-1 text-xs text-slate-500">Tabela pokazuje TOP 10 użytkowników; przycisk pokaże wszystkie rekordy i ich liczbę.</p>
+                </div>
+                <div class="flex w-full items-center gap-3 sm:w-auto">
+                    <input type="text" id="loginTableSearch" onkeyup="loginRenderTable()" placeholder="Filtruj tabelę (User, IP, Host)..." class="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-800 placeholder-slate-400 transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:w-72">
+                    <button type="button" onclick="loginToggleAll()" id="loginBtnShowAll" class="whitespace-nowrap rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white shadow-md shadow-indigo-600/10 transition hover:bg-indigo-700">Pokaż wszystkie</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse text-left" id="loginLogsTable">
+                    <thead>
+                        <tr class="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                            <th class="px-6 py-4">Source.UserName</th><th class="px-6 py-4">Source.IP</th><th class="px-6 py-4">Source.HostName</th><th class="px-6 py-4">EventMap.SubType</th><th class="px-6 py-4">Time.Generated</th><th class="px-6 py-4">Service.Name</th><th class="px-6 py-4 text-right">Akcja</th>
+                        </tr>
+                    </thead>
+                    <tbody id="loginTableBody" class="divide-y divide-slate-100 text-sm text-slate-700"></tbody>
+                </table>
+            </div>
+            <div class="flex flex-col items-center justify-between gap-4 border-t border-slate-100 bg-slate-50/50 p-4 text-xs text-slate-500 sm:flex-row">
+                <span id="loginShowingCount">Pokazuję 0 z 0 rekordów</span>
+                <div class="flex gap-2"><span class="rounded border border-emerald-200 bg-white px-2 py-1 text-[10px] font-bold uppercase text-emerald-600 shadow-sm">Success</span><span class="rounded border border-rose-200 bg-white px-2 py-1 text-[10px] font-bold uppercase text-rose-600 shadow-sm">Failure / Log error</span><span class="rounded border border-amber-200 bg-white px-2 py-1 text-[10px] font-bold uppercase text-amber-600 shadow-sm">Lockout</span></div>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- SEKCJA TOP 5 LIST -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <div class="flex items-center space-x-2 mb-4 pb-2 border-b border-slate-100">
-            <i data-lucide="user-x" class="w-5 h-5 text-red-500"></i>
-            <h3 class="font-bold text-slate-900 text-sm">Top 5 Użytkowników</h3>
+<div id="loginUserModal" class="fixed inset-0 z-50 hidden justify-end bg-slate-900/40 backdrop-blur-sm">
+    <div class="flex h-full w-full max-w-2xl flex-col overflow-y-auto border-l border-slate-200 bg-white shadow-2xl">
+        <div class="flex items-center justify-between border-b border-slate-200 bg-slate-50 p-6">
+            <div><h3 id="loginModalTitle" class="text-xl font-bold text-slate-950">Analiza Szczegółowa</h3><p class="mt-1 text-xs text-slate-500">Pełny profil aktywności wybranego użytkownika</p></div>
+            <button type="button" onclick="loginCloseModal()" class="rounded-lg p-2 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"><i data-lucide="x" class="h-6 w-6"></i></button>
         </div>
-        <div id="top-users-list" class="space-y-4"></div>
-    </div>
-
-    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <div class="flex items-center space-x-2 mb-4 pb-2 border-b border-slate-100">
-            <i data-lucide="cpu" class="w-5 h-5 text-indigo-500"></i>
-            <h3 class="font-bold text-slate-900 text-sm">Top 5 Usług (Protokołów)</h3>
-        </div>
-        <div id="top-services-list" class="space-y-4"></div>
-    </div>
-
-    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <div class="flex items-center space-x-2 mb-4 pb-2 border-b border-slate-100">
-            <i data-lucide="network" class="w-5 h-5 text-orange-500"></i>
-            <h3 class="font-bold text-slate-900 text-sm">Top 5 IP Source</h3>
-        </div>
-        <div id="top-ips-list" class="space-y-4"></div>
-    </div>
-</div>
-
-<!-- KARTA ANALITYCZNA WYBRANEGO HOSTA -->
-<div id="host-analysis-block" class="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-300">
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 mb-6 gap-4">
-        <div>
-            <h3 class="text-base font-bold text-slate-950">Karta Analityczna Wybranego Hosta (Próby Logowań)</h3>
-            <p class="text-xs text-slate-400 mt-1">Szczegółowa korelacja ruchu, profilu zachowań oraz ukierunkowanych kont dla wybranego IP.</p>
-        </div>
-        <div class="flex items-center space-x-3">
-            <span id="selected-host-badge" class="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-600">
-                Wybrany: Wszystkie hosty (Wybierz z tabeli poniżej)
-            </span>
-        </div>
-    </div>
-
-    <div id="analysis-card-content" class="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <!-- Identyfikacja i Reputacja -->
-        <div class="lg:border-r lg:border-slate-100 lg:pr-8 flex flex-col justify-between">
-            <div class="space-y-4">
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Identyfikacja i Śledztwo</span>
-                <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    <h4 id="analysis-ip-address" class="text-lg font-bold text-slate-900 font-mono">0.0.0.0</h4>
-                    <p id="analysis-hostname" class="text-xs font-semibold text-slate-500 mt-1">Host: brak</p>
+        <div class="flex-1 space-y-6 p-6">
+            <div class="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Metadane użytkownika i środowiska</h4>
+                <div class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
+                    <div><span class="block text-xs text-slate-400">Ostatnia Source.HostName</span><span id="ulgDetailHost" class="font-semibold text-slate-800">-</span></div>
+                    <div><span class="block text-xs text-slate-400">Source.IP</span><span id="ulgDetailSourceIp" class="font-mono text-slate-800">-</span></div>
+                    <div><span class="block text-xs text-slate-400">Destination.IP</span><span id="ulgDetailDestIp" class="font-mono text-slate-800">-</span></div>
+                    <div><span class="block text-xs text-slate-400">Destination.HostName</span><span id="ulgDetailDestHost" class="font-semibold text-slate-800">-</span></div>
+                    <div><span class="block text-xs text-slate-400">Service.Name</span><span id="ulgDetailService" class="font-semibold text-indigo-600">-</span></div>
+                    <div><span class="block text-xs text-slate-400">Liczba prób</span><span id="ulgDetailAttempts" class="font-bold text-slate-900">-</span></div>
                 </div>
-                <div class="pt-2">
-                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">Zewnętrzne bazy reputacyjne (IP)</span>
-                    <div class="flex flex-wrap gap-1.5" id="analysis-external-links"></div>
-                </div>
+                <div class="border-t border-slate-200 pt-3"><span class="mb-1 block text-xs text-slate-400">EventSource.Description</span><p id="ulgDetailDesc" class="overflow-x-auto rounded-lg border border-slate-200 bg-white p-3 font-mono text-xs leading-relaxed text-slate-700">-</p></div>
             </div>
-            <div class="mt-6 pt-4 border-t border-slate-100 text-xs text-slate-500 space-y-2">
-                <div class="flex justify-between">
-                    <span>Zarejestrowane próby (łącznie):</span>
-                    <span id="analysis-total-attempts" class="font-bold text-slate-800">0</span>
-                </div>
-                <div class="flex justify-between">
-                    <span>Główny target (Konto):</span>
-                    <span id="analysis-primary-target" class="font-bold text-red-600">brak</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Celowane Nazwy Kont (Użytkownicy) -->
-        <div class="lg:border-r lg:border-slate-100 lg:px-4">
-            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-3">Targetowane Nazwy Użytkowników</span>
-            <div id="analysis-targeted-users" class="space-y-3 max-h-56 overflow-y-auto pr-1"></div>
-        </div>
-
-        <!-- Targetowane Serwery / Cele oraz Usługi -->
-        <div class="lg:pl-4 space-y-5">
             <div>
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-3">Obierane cele docelowe (IP / Host)</span>
-                <div id="analysis-destinations" class="space-y-3 max-h-28 overflow-y-auto pr-1"></div>
-            </div>
-            <div class="border-t border-slate-100 pt-4">
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-3">Wykorzystywane protokoły / usługi</span>
-                <div id="analysis-services" class="space-y-3 max-h-24 overflow-y-auto pr-1"></div>
+                <div class="mb-4 flex items-center justify-between"><h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Rozkład godzinowy</h4><span class="rounded border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[10px] text-indigo-700">Profil usera</span></div>
+                <div id="ulgUserHourGrid" class="grid grid-cols-4 gap-3 sm:grid-cols-6"></div>
             </div>
         </div>
+        <div class="border-t border-slate-200 bg-slate-50 p-6"><button type="button" onclick="loginCloseModal()" class="w-full rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-slate-800">Zamknij panel szczegółów</button></div>
     </div>
-</div>
-
-<!-- TABELA GŁÓWNA -->
-<div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-8">
-    <div class="p-6 border-b border-slate-200 space-y-4 bg-slate-50/50">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div class="relative flex-1">
-                <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                    <i data-lucide="search" class="w-4 h-4"></i>
-                </span>
-                <input type="text" id="table-search" onkeyup="filterTable()" placeholder="Szukaj po użytkowniku, IP, hostach lub usłudze..." class="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none">
-            </div>
-            <div class="flex flex-wrap gap-2">
-                <button onclick="setFilterPreset('all')" class="preset-btn px-3.5 py-1.5 text-xs font-medium rounded-lg border border-blue-200 bg-blue-50 text-blue-700 transition">Wszystko</button>
-                <button onclick="setFilterPreset('deny')" class="preset-btn px-3.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition">Status: Deny / Blokada</button>
-                <button onclick="exportToCSV()" class="inline-flex items-center space-x-1 px-3.5 py-1.5 text-xs font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition ml-auto">
-                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
-                    <span>Eksport CSV</span>
-                </button>
-            </div>
-        </div>
-        <div class="text-xs text-slate-400 flex items-center justify-between">
-            <div>Tabela wyświetla nieudane próby uwierzytelniania w kolejności chronologicznej.</div>
-            <div id="filter-stats" class="font-medium text-slate-600">Wyświetlono: -- / -- rekordów</div>
-        </div>
-    </div>
-
-    <div class="overflow-x-auto table-container">
-        <table class="w-full text-left border-collapse" id="logs-table">
-            <thead>
-                <tr class="bg-slate-100 border-b border-slate-200 sticky top-0 z-10">
-                    <th class="px-5 py-3.5 text-xs font-bold text-slate-700 tracking-wider">Source.UserName</th>
-                    <th class="px-5 py-3.5 text-xs font-bold text-slate-700 tracking-wider">Source.IP (Term)</th>
-                    <th class="px-5 py-3.5 text-xs font-bold text-slate-700 tracking-wider">Source.HostName (Term)</th>
-                    <th class="px-5 py-3.5 text-xs font-bold text-slate-700 tracking-wider">Destination.IP (Term)</th>
-                    <th class="px-5 py-3.5 text-xs font-bold text-slate-700 tracking-wider">Destination.HostName (Term)</th>
-                    <th class="px-5 py-3.5 text-xs font-bold text-slate-700 tracking-wider">EventMap.SubType (Term)</th>
-                    <th class="px-5 py-3.5 text-xs font-bold text-slate-700 tracking-wider">Time.Generated (Term)</th>
-                    <th class="px-5 py-3.5 text-xs font-bold text-slate-700 tracking-wider">EventSource.Description (Term)</th>
-                    <th class="px-5 py-3.5 text-xs font-bold text-slate-700 tracking-wider text-center">Akcja</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100 text-xs font-medium text-slate-600" id="table-body"></tbody>
-        </table>
-    </div>
-
-    <div class="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <button id="toggle-rows-btn" onclick="toggleTableRows()" class="inline-flex items-center space-x-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg shadow-sm hover:bg-slate-50 transition">
-            <span id="toggle-rows-text">Pokaż więcej</span>
-            <i id="toggle-rows-icon" data-lucide="chevron-down" class="w-4 h-4"></i>
-        </button>
-        <div class="text-xs text-slate-500 font-medium">
-            Pokazano: <span id="displayed-rows-count" class="text-slate-900 font-bold">10</span> z <span id="total-rows-count" class="text-slate-900 font-bold">--</span> rekordów.
-        </div>
-    </div>
-</div>
-
-<!-- ROZKŁAD GODZINOWY LOGOWAŃ (HEATMAPA) -->
-<div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-    <div class="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-        <div class="flex items-center space-x-2">
-            <i data-lucide="clock" class="w-5 h-5 text-indigo-600"></i>
-            <h3 id="heatmap-title" class="font-bold text-slate-900 text-sm">Dobowy rozkład godzinowy prób logowania (Wszystkie)</h3>
-        </div>
-        <div class="flex items-center space-x-4">
-            <button id="reset-heatmap-filter-btn" onclick="selectHost(null)" class="hidden text-xs font-bold text-blue-600 hover:text-blue-800 transition">
-                Pokaż dla wszystkich
-            </button>
-            <div class="flex items-center space-x-2 text-[10px] text-slate-400">
-                <span>Mniej</span>
-                <span class="w-3 h-3 bg-indigo-50 rounded border border-indigo-100"></span>
-                <span class="w-3 h-3 bg-indigo-300 rounded"></span>
-                <span class="w-3 h-3 bg-indigo-600 rounded"></span>
-                <span class="w-3 h-3 bg-indigo-900 rounded"></span>
-                <span>Więcej</span>
-            </div>
-        </div>
-    </div>
-    <p class="text-xs text-slate-500 mb-6">
-        Wizualizacja natężenia logowań w ujęciu 24-godzinnym. Im ciemniejsza barwa kafelka, tym więcej prób logowań zarejestrowano w tej godzinie.
-    </p>
-    <div id="hourly-heatmap-grid" class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12 gap-3"></div>
 </div>
 
 <script>
-    const activeData = <?php echo json_encode($parsedData['records'] ?? [], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT); ?>;
-    let showAllRows = false;
-    let selectedHostIp = null;
+const ulgRecords = <?php echo json_encode(array_values($records), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+const ulgUsers = <?php echo json_encode($modalUsers, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+let ulgShowAll = false;
 
-    function parseValueWithCount(str) {
-        if (!str) return { val: "-", count: 0 };
-        const regex = /([^(]+)\s*\((\d+)\)/;
-        const match = str.match(regex);
-        if (match) {
-            return { val: match[1].trim(), count: parseInt(match[2], 10) };
-        }
-        return { val: str.trim(), count: 1 };
+function ulgEscape(v) { return String(v ?? '-').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c])); }
+function ulgBadge(subType) {
+    const v = String(subType || '').toLowerCase();
+    if (v.includes('success')) return '<span class="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-emerald-700">Success</span>';
+    if (v.includes('lock')) return '<span class="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-amber-700">Lockout</span>';
+    return '<span class="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-rose-700">Failure</span>';
+}
+function ulgHourlyHtml(hours) {
+    const max = Math.max(...hours, 1);
+    let html = '';
+    for (let h = 0; h < 24; h++) {
+        const count = Number(hours[h] || 0);
+        const ratio = count / max;
+        let cls = 'bg-slate-50 border-slate-200 text-slate-400';
+        let label = 'text-slate-500';
+        if (count > 0 && ratio <= .3) { cls = 'bg-indigo-50 border-indigo-100 text-indigo-700'; label = 'text-indigo-600'; }
+        else if (count > 0 && ratio <= .7) { cls = 'bg-indigo-100 border-indigo-200 text-indigo-800'; label = 'text-indigo-700'; }
+        else if (count > 0) { cls = 'bg-indigo-600 border-indigo-600 text-white font-bold'; label = 'text-indigo-100'; }
+        html += `<div class="flex h-[65px] flex-col justify-between rounded-xl border p-2.5 transition hover:bg-slate-100 ${cls}"><span class="text-[10px] font-bold uppercase ${label}">${String(h).padStart(2,'0')}:00</span><span class="mt-1 text-right text-sm font-extrabold">${count.toLocaleString('pl-PL')}</span></div>`;
     }
-
-    window.addEventListener('DOMContentLoaded', () => {
-        if (activeData && activeData.length > 0) {
-            const ipCounts = {};
-            activeData.forEach(row => {
-                const sourceIp = parseValueWithCount(row.sourceIp);
-                const user = parseValueWithCount(row.user);
-                if (sourceIp.val && sourceIp.val !== '-') {
-                    ipCounts[sourceIp.val] = (ipCounts[sourceIp.val] || 0) + user.count;
-                }
-            });
-            const sortedIps = Object.entries(ipCounts).sort((a,b) => b[1]-a[1]);
-            if (sortedIps.length > 0) {
-                selectedHostIp = sortedIps[0][0];
-            }
-        }
-        renderAll();
-    });
-
-    function renderAll() {
-        renderTable(activeData);
-        updateKPIs(activeData);
-        renderTop5Lists(activeData);
-        renderHourlyHeatmap(activeData);
-        renderHostAnalysisCard(selectedHostIp);
-    }
-
-    function renderTable(data) {
-        const tbody = document.getElementById('table-body');
-        tbody.innerHTML = '';
-        const totalCount = data.length;
-        document.getElementById('total-rows-count').innerText = totalCount;
-
-        if (totalCount === 0) {
-            tbody.innerHTML = `<tr><td colspan="11" class="px-5 py-8 text-center text-slate-400">Brak danych</td></tr>`;
-            document.getElementById('displayed-rows-count').innerText = 0;
-            return;
-        }
-
-        const limit = showAllRows ? totalCount : 10;
-        const displayedData = data.slice(0, limit);
-        document.getElementById('displayed-rows-count').innerText = displayedData.length;
-
-        const btnText = document.getElementById('toggle-rows-text');
-        const btnIcon = document.getElementById('toggle-rows-icon');
-        if (showAllRows) {
-            btnText.innerText = "Zwiń listę";
-            btnIcon.setAttribute('data-lucide', 'chevron-up');
-        } else {
-            btnText.innerText = `Pokaż więcej (${totalCount - displayedData.length} ukrytych)`;
-            btnIcon.setAttribute('data-lucide', 'chevron-down');
-        }
-
-        displayedData.forEach(row => {
-            const tr = document.createElement('tr');
-            const sourceIp = parseValueWithCount(row.sourceIp);
-            const isSelected = (selectedHostIp !== null && sourceIp.val === selectedHostIp);
-            tr.className = `hover:bg-slate-50 transition border-b border-slate-100 ${isSelected ? 'bg-blue-50/55' : ''}`;
-
-            const user = parseValueWithCount(row.user);
-            const sourceHost = parseValueWithCount(row.sourceHost);
-            const destIp = parseValueWithCount(row.destIp);
-            const destHost = parseValueWithCount(row.destHost);
-            const subType = parseValueWithCount(row.subType);
-            const description = parseValueWithCount(row.description);
-
-            const dateRows = row.timeGenerated.split('\n').filter(d => d.trim().length > 0);
-            let dateHtml = '';
-            dateRows.forEach(dr => {
-                const parsedDate = parseValueWithCount(dr);
-                dateHtml += `
-                    <div class="flex items-center justify-between space-x-2 py-0.5 border-b border-slate-100 last:border-0 font-mono text-[10px]">
-                        <span class="text-slate-700">${parsedDate.val}</span>
-                        <span class="bg-slate-100 text-slate-600 px-1 py-0.1 rounded text-[9px] font-bold">x${parsedDate.count}</span>
-                    </div>`;
-            });
-
-            const isDeny = subType.val.toLowerCase().includes('deny') || subType.val.toLowerCase().includes('block');
-            const badgeColor = isDeny ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-amber-50 text-amber-700 border-amber-200';
-
-            tr.innerHTML = `
-                <td class="px-5 py-3.5 font-semibold text-slate-900">
-                    <div class="flex items-center space-x-1.5">
-                        <span class="w-2 h-2 rounded-full ${isDeny ? 'bg-red-500' : 'bg-orange-500'}"></span>
-                        <span>${user.val}</span>
-                        <span class="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded-full font-bold">(${user.count})</span>
-                    </div>
-                </td>
-                <td class="px-5 py-3.5 font-mono text-xs font-semibold text-slate-900">
-                    <button onclick="selectHost('${sourceIp.val}')" class="hover:underline hover:text-blue-600 focus:outline-none">
-                        ${sourceIp.val}
-                    </button>
-                    <span class="text-slate-400 font-normal">(${sourceIp.count})</span>
-                </td>
-                <td class="px-5 py-3.5 text-slate-500">${sourceHost.val}</td>
-                <td class="px-5 py-3.5 font-mono text-xs">${destIp.val}</td>
-                <td class="px-5 py-3.5 text-slate-500">${destHost.val}</td>
-                <td class="px-5 py-3.5">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${badgeColor}">
-                        ${subType.val}
-                    </span>
-                </td>
-                <td class="px-5 py-3.5 whitespace-nowrap">
-                    <div class="bg-slate-50/50 p-1.5 rounded-lg border border-slate-200 max-h-24 overflow-y-auto">${dateHtml}</div>
-                </td>
-                <td class="px-5 py-3.5 text-slate-500 max-w-xs truncate" title="${description.val}">${description.val}</td>
-                <td class="px-5 py-3.5 text-center">
-                    <button onclick="selectHost('${sourceIp.val}')" class="inline-flex items-center gap-1.5 rounded-lg border ${isSelected ? 'border-blue-300 bg-blue-50 text-blue-700 shadow-sm' : 'border-slate-200 bg-white hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200 text-slate-600'} px-3 py-2 text-xs font-bold transition-all">
-                        <i data-lucide="${isSelected ? 'check-circle-2' : 'eye'}" class="h-4 w-4"></i>
-                        <span>${isSelected ? 'Analizowany' : 'Analizuj'}</span>
-                    </button>
-                </td>`;
-            tbody.appendChild(tr);
-        });
-        updateFilterStats(displayedData.length, totalCount);
-        lucide.createIcons();
-    }
-
-    function selectHost(ip) {
-        selectedHostIp = ip;
-        renderTable(activeData);
-        renderHostAnalysisCard(ip);
-        renderHourlyHeatmap(activeData);
-        if (ip) {
-            document.getElementById('host-analysis-block').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    }
-
-    function renderHostAnalysisCard(ip) {
-        const badge = document.getElementById('selected-host-badge');
-        const resetBtn = document.getElementById('reset-heatmap-filter-btn');
-
-        if (!ip) {
-            badge.innerText = "Wybrany: Wszystkie hosty (Wykres zbiorczy)";
-            badge.className = "rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600";
-            resetBtn.classList.add('hidden');
-            document.getElementById('analysis-ip-address').innerText = "Wszyscy użytkownicy";
-            document.getElementById('analysis-hostname').innerText = "Statystyki zbiorcze";
-            document.getElementById('analysis-total-attempts').innerText = document.getElementById('kpi-total-attempts').innerText;
-            document.getElementById('analysis-primary-target').innerText = "zbiorcze";
-            document.getElementById('analysis-targeted-users').innerHTML = `<p class="text-xs text-slate-400 py-4 text-center">Wybierz konkretnego hosta z tabeli poniżej.</p>`;
-            document.getElementById('analysis-destinations').innerHTML = `<p class="text-xs text-slate-400 text-center py-2">Wybierz hosta</p>`;
-            document.getElementById('analysis-services').innerHTML = `<p class="text-xs text-slate-400 text-center py-2">Wybierz hosta</p>`;
-            document.getElementById('analysis-external-links').innerHTML = ``;
-            return;
-        }
-
-        badge.innerText = `Wybrany: Host ${ip}`;
-        badge.className = "rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-600 animate-pulse";
-        resetBtn.classList.remove('hidden');
-
-        const records = activeData.filter(row => parseValueWithCount(row.sourceIp).val === ip);
-        let totalAttempts = 0;
-        let detectedHostname = 'Brak nazwy (DHCP)';
-        const userStats = {};
-        const destStats = {};
-        const serviceStats = {};
-
-        records.forEach(row => {
-            const u = parseValueWithCount(row.user);
-            const sourceHost = parseValueWithCount(row.sourceHost);
-            const destHost = parseValueWithCount(row.destHost);
-            const destIp = parseValueWithCount(row.destIp);
-            const service = parseValueWithCount(row.serviceName);
-
-            if (sourceHost.val && sourceHost.val !== '-') {
-                detectedHostname = sourceHost.val;
-            }
-
-            const dateRows = row.timeGenerated.split('\n').filter(d => d.trim().length > 0);
-            dateRows.forEach(dr => {
-                totalAttempts += parseValueWithCount(dr).count;
-            });
-
-            if (u.val) {
-                userStats[u.val] = (userStats[u.val] || 0) + u.count;
-            }
-
-            const target = (destHost.val && destHost.val !== '-') ? `${destHost.val} (${destIp.val})` : destIp.val;
-            if (target) {
-                destStats[target] = (destStats[target] || 0) + u.count;
-            }
-
-            if (service.val) {
-                serviceStats[service.val] = (serviceStats[service.val] || 0) + u.count;
-            }
-        });
-
-        document.getElementById('analysis-ip-address').innerText = ip;
-        document.getElementById('analysis-hostname').innerText = `Host: ${detectedHostname}`;
-        document.getElementById('analysis-total-attempts').innerText = totalAttempts.toLocaleString();
-
-        document.getElementById('analysis-external-links').innerHTML = `
-            <a href="https://www.abuseipdb.com/check/${encodeURIComponent(ip)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700 hover:bg-red-100 transition">
-                <i data-lucide="shield-alert" class="h-3 w-3"></i> AbuseIPDB
-            </a>
-            <a href="https://www.virustotal.com/gui/ip-address/${encodeURIComponent(ip)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-700 hover:bg-slate-100 transition">
-                <i data-lucide="globe" class="h-3 w-3"></i> VT
-            </a>
-            <a href="https://www.whois.com/whois/${encodeURIComponent(ip)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700 hover:bg-blue-100 transition">
-                <i data-lucide="search" class="h-3 w-3"></i> WHOIS
-            </a>`;
-
-        const sortedUsers = Object.entries(userStats).sort((a,b) => b[1]-a[1]);
-        const maxUserVal = sortedUsers.length > 0 ? sortedUsers[0][1] : 1;
-        document.getElementById('analysis-primary-target').innerText = sortedUsers.length > 0 ? sortedUsers[0][0] : "Brak";
-
-        const usersContainer = document.getElementById('analysis-targeted-users');
-        usersContainer.innerHTML = '';
-        sortedUsers.forEach(([username, count]) => {
-            const pct = Math.round((count / maxUserVal) * 100);
-            usersContainer.innerHTML += `
-                <div class="space-y-1">
-                    <div class="flex justify-between text-[11px] font-semibold text-slate-700">
-                        <span class="font-mono text-slate-900">${username}</span>
-                        <span>${count} prób</span>
-                    </div>
-                    <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                        <div class="bg-gradient-to-r from-red-500 to-rose-600 h-full rounded-full transition" style="width: ${pct}%"></div>
-                    </div>
-                </div>`;
-        });
-
-        const sortedDests = Object.entries(destStats).sort((a,b) => b[1]-a[1]);
-        const maxDestVal = sortedDests.length > 0 ? sortedDests[0][1] : 1;
-        const destsContainer = document.getElementById('analysis-destinations');
-        destsContainer.innerHTML = '';
-        sortedDests.forEach(([target, count]) => {
-            const pct = Math.round((count / maxDestVal) * 100);
-            destsContainer.innerHTML += `
-                <div class="space-y-1">
-                    <div class="flex justify-between text-[10px] font-semibold">
-                        <span class="truncate max-w-[180px] text-slate-700 font-mono">${target}</span>
-                        <span class="text-slate-900 font-bold">${count}</span>
-                    </div>
-                    <div class="w-full bg-slate-50 h-1 rounded-full overflow-hidden">
-                        <div class="bg-indigo-600 h-full rounded-full" style="width: ${pct}%"></div>
-                    </div>
-                </div>`;
-        });
-
-        const sortedServices = Object.entries(serviceStats).sort((a,b) => b[1]-a[1]);
-        const maxServVal = sortedServices.length > 0 ? sortedServices[0][1] : 1;
-        const servicesContainer = document.getElementById('analysis-services');
-        servicesContainer.innerHTML = '';
-        sortedServices.forEach(([srv, count]) => {
-            const pct = Math.round((count / maxServVal) * 100);
-            servicesContainer.innerHTML += `
-                <div class="space-y-1">
-                    <div class="flex justify-between text-[10px] font-semibold">
-                        <span class="rounded bg-slate-100 px-1.5 py-0.2 font-bold text-slate-600 font-mono text-[9px]">${srv}</span>
-                        <span class="text-slate-900 font-bold">${count}</span>
-                    </div>
-                    <div class="w-full bg-slate-50 h-1 rounded-full overflow-hidden">
-                        <div class="bg-emerald-500 h-full rounded-full" style="width: ${pct}%"></div>
-                    </div>
-                </div>`;
-        });
-
-        lucide.createIcons();
-    }
-
-    function toggleTableRows() {
-        showAllRows = !showAllRows;
-        renderTable(activeData);
-    }
-
-    function updateKPIs(data) {
-        let totalAttempts = 0;
-        const uniqueUsers = new Set();
-        const uniqueIps = new Set();
-        const destinationCounts = {};
-
-        data.forEach(row => {
-            const user = parseValueWithCount(row.user);
-            const sourceIp = parseValueWithCount(row.sourceIp);
-            const destHost = parseValueWithCount(row.destHost);
-
-            const dateRows = row.timeGenerated.split('\n').filter(d => d.trim().length > 0);
-            dateRows.forEach(dr => {
-                totalAttempts += parseValueWithCount(dr).count;
-            });
-
-            if (user.val) uniqueUsers.add(user.val);
-            if (sourceIp.val) uniqueIps.add(sourceIp.val);
-            if (destHost.val && destHost.val !== "-") {
-                destinationCounts[destHost.val] = (destinationCounts[destHost.val] || 0) + user.count;
-            }
-        });
-
-        let topDest = "-";
-        let maxDestCount = -1;
-        for (const [dest, count] of Object.entries(destinationCounts)) {
-            if (count > maxDestCount) {
-                maxDestCount = count;
-                topDest = dest;
-            }
-        }
-
-        document.getElementById('kpi-total-attempts').innerText = totalAttempts.toLocaleString();
-        document.getElementById('kpi-unique-users').innerText = uniqueUsers.size;
-        document.getElementById('kpi-unique-ips').innerText = uniqueIps.size;
-        document.getElementById('kpi-top-dest').innerText = topDest;
-    }
-
-    function renderTop5Lists(data) {
-        const userStats = {};
-        const serviceStats = {};
-        const ipStats = {};
-
-        data.forEach(row => {
-            const u = parseValueWithCount(row.user);
-            const s = parseValueWithCount(row.serviceName);
-            const ip = parseValueWithCount(row.sourceIp);
-
-            if (u.val && u.val !== "-") userStats[u.val] = (userStats[u.val] || 0) + u.count;
-            if (s.val && s.val !== "-") serviceStats[s.val] = (serviceStats[s.val] || 0) + s.count;
-            if (ip.val && ip.val !== "-") ipStats[ip.val] = (ipStats[ip.val] || 0) + ip.count;
-        });
-
-        const sortedUsers = Object.entries(userStats).sort((a,b) => b[1]-a[1]).slice(0, 5);
-        const sortedServices = Object.entries(serviceStats).sort((a,b) => b[1]-a[1]).slice(0, 5);
-        const sortedIps = Object.entries(ipStats).sort((a,b) => b[1]-a[1]).slice(0, 5);
-
-        const maxU = sortedUsers.length > 0 ? sortedUsers[0][1] : 1;
-        const maxS = sortedServices.length > 0 ? sortedServices[0][1] : 1;
-        const maxI = sortedIps.length > 0 ? sortedIps[0][1] : 1;
-
-        const usersContainer = document.getElementById('top-users-list');
-        usersContainer.innerHTML = '';
-        sortedUsers.forEach(([name, count], idx) => {
-            const pct = Math.round((count/maxU)*100);
-            usersContainer.innerHTML += `
-                <div class="space-y-1">
-                    <div class="flex justify-between text-xs font-medium">
-                        <span class="text-slate-700 font-semibold">${idx+1}. ${name}</span>
-                        <span class="text-slate-900 font-bold">${count} prób</span>
-                    </div>
-                    <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                        <div class="bg-red-500 h-full rounded-full transition" style="width: ${pct}%"></div>
-                    </div>
-                </div>`;
-        });
-
-        const servicesContainer = document.getElementById('top-services-list');
-        servicesContainer.innerHTML = '';
-        sortedServices.forEach(([name, count], idx) => {
-            const pct = Math.round((count/maxS)*100);
-            servicesContainer.innerHTML += `
-                <div class="space-y-1">
-                    <div class="flex justify-between text-xs font-medium">
-                        <span class="text-slate-700 font-semibold">${idx+1}. ${name}</span>
-                        <span class="text-slate-900 font-bold">${count} prób</span>
-                    </div>
-                    <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                        <div class="bg-indigo-500 h-full rounded-full transition" style="width: ${pct}%"></div>
-                    </div>
-                </div>`;
-        });
-
-        const ipsContainer = document.getElementById('top-ips-list');
-        ipsContainer.innerHTML = '';
-        sortedIps.forEach(([name, count], idx) => {
-            const pct = Math.round((count/maxI)*100);
-            ipsContainer.innerHTML += `
-                <div class="space-y-1">
-                    <div class="flex justify-between text-xs font-medium">
-                        <button onclick="selectHost('${name}')" class="text-slate-700 font-semibold text-left hover:underline hover:text-blue-600 focus:outline-none">
-                            ${idx+1}. ${name}
-                        </button>
-                        <span class="text-slate-900 font-bold">${count} prób</span>
-                    </div>
-                    <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                        <div class="bg-orange-500 h-full rounded-full transition" style="width: ${pct}%"></div>
-                    </div>
-                </div>`;
+    return html;
+}
+function loginRenderTable() {
+    const q = (document.getElementById('loginTableSearch')?.value || '').toLowerCase().trim();
+    const filtered = ulgRecords.filter(r => [r.user,r.source_ip,r.source_host,r.dest_ip,r.dest_host,r.sub_type,r.service_name].join(' ').toLowerCase().includes(q));
+    const shown = ulgShowAll ? filtered : filtered.slice(0, 10);
+    const body = document.getElementById('loginTableBody');
+    body.innerHTML = '';
+    if (shown.length === 0) {
+        body.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-slate-400">Brak rekordów pasujących do filtra.</td></tr>';
+    } else {
+        shown.forEach(r => {
+            const user = r.user || '-';
+            const firstTime = String(r.time_generated || '-').split('\n')[0] || '-';
+            body.innerHTML += `<tr class="cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50" onclick="ulgShowDetails('${ulgEscape(user)}')"><td class="whitespace-nowrap px-6 py-4 font-semibold text-slate-900">${ulgEscape(user)}</td><td class="px-6 py-4 font-mono text-xs text-slate-500">${ulgEscape(r.source_ip)}</td><td class="px-6 py-4 font-medium text-slate-600">${ulgEscape(r.source_host)}</td><td class="px-6 py-4">${ulgBadge(r.sub_type)}</td><td class="px-6 py-4 font-mono text-xs text-slate-500">${ulgEscape(firstTime)}</td><td class="px-6 py-4 text-slate-600"><span class="rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs text-slate-700">${ulgEscape(r.service_name)}</span></td><td class="px-6 py-4 text-right" onclick="event.stopPropagation()"><button onclick="ulgShowDetails('${ulgEscape(user)}')" class="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 transition hover:bg-indigo-600 hover:text-white">Szczegóły</button></td></tr>`;
         });
     }
-
-    function renderHourlyHeatmap(data) {
-        const hourlyCounts = Array(24).fill(0);
-        const titleEl = document.getElementById('heatmap-title');
-
-        let recordsToProcess = data;
-        if (selectedHostIp !== null) {
-            recordsToProcess = data.filter(row => parseValueWithCount(row.sourceIp).val === selectedHostIp);
-            titleEl.innerText = `Dobowy rozkład godzinowy prób logowania (Tylko host: ${selectedHostIp})`;
-        } else {
-            titleEl.innerText = `Dobowy rozkład godzinowy prób logowania (Wszystkie hosty)`;
-        }
-
-        recordsToProcess.forEach(row => {
-            const dateRows = row.timeGenerated.split('\n').filter(d => d.trim().length > 0);
-            dateRows.forEach(dr => {
-                const parsedDate = parseValueWithCount(dr);
-                const match = parsedDate.val.match(/\s(\d{2}):/);
-                if (match) {
-                    const hour = parseInt(match[1], 10);
-                    if (hour >= 0 && hour < 24) hourlyCounts[hour] += parsedDate.count;
-                }
-            });
-        });
-
-        const maxVal = Math.max(...hourlyCounts);
-        const grid = document.getElementById('hourly-heatmap-grid');
-        grid.innerHTML = '';
-
-        for (let h = 0; h < 24; h++) {
-            const count = hourlyCounts[h];
-            const opacity = count > 0 ? 0.08 + (count / (maxVal || 1)) * 0.88 : 0.03;
-            const textCol = opacity > 0.55 ? 'text-white' : 'text-slate-700';
-            const subTextCol = opacity > 0.55 ? 'text-indigo-100' : 'text-slate-400';
-            const bgStyle = count > 0 ? `background-color: rgba(79, 70, 229, ${opacity})` : `background-color: #f1f5f9`;
-            const formatted = h.toString().padStart(2, '0') + ':00';
-
-            grid.innerHTML += `
-                <div class="p-3 rounded-lg flex flex-col items-center justify-between border border-slate-200/40 shadow-sm transition hover:scale-[1.04] cursor-help" style="${bgStyle}" title="Godzina ${formatted}: ${count} prób">
-                    <span class="text-[10px] font-bold ${subTextCol}">${formatted}</span>
-                    <span class="text-base font-extrabold mt-1 ${textCol}">${count}</span>
-                    <span class="text-[8px] uppercase tracking-wide mt-0.5 ${subTextCol}">prób</span>
-                </div>`;
-        }
-    }
-
-    function updateFilterStats(visible, total) {
-        document.getElementById('filter-stats').innerText = `Wyświetlono: ${visible} z ${total} rekordów`;
-    }
-
-    function filterTable() {
-        const query = document.getElementById('table-search').value.toLowerCase();
-        const rows = document.getElementById('table-body').getElementsByTagName('tr');
-        let visibleCount = 0;
-
-        for (let i = 0; i < rows.length; i++) {
-            if (rows[i].innerText.toLowerCase().includes(query)) {
-                rows[i].style.display = '';
-                visibleCount++;
-            } else {
-                rows[i].style.display = 'none';
-            }
-        }
-        updateFilterStats(visibleCount, activeData.length);
-    }
-
-    function setFilterPreset(preset) {
-        const searchInput = document.getElementById('table-search');
-        const buttons = document.querySelectorAll('.preset-btn');
-        buttons.forEach(btn => {
-            btn.className = 'preset-btn px-3.5 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition';
-        });
-        event.target.className = 'preset-btn px-3.5 py-1.5 text-xs font-medium rounded-lg border border-blue-200 bg-blue-50 text-blue-700 transition';
-
-        if (preset === 'all') {
-            searchInput.value = '';
-        } else if (preset === 'deny') {
-            searchInput.value = 'deny';
-        }
-        filterTable();
-    }
-
-    function exportToCSV() {
-        let csv = "data:text/csv;charset=utf-8,";
-        const headers = ["Source.UserName", "Source.IP", "Source.HostName", "Destination.IP", "Destination.HostName", "EventMap.SubType", "Time.Generated", "EventSource.Description", "EventSource.IP", "Service.Name"];
-        csv += headers.join(",") + "\r\n";
-
-        activeData.forEach(row => {
-            const line = [
-                `"${row.user}"`, `"${row.sourceIp}"`, `"${row.sourceHost}"`,
-                `"${row.destIp}"`, `"${row.destHost}"`, `"${row.subType}"`,
-                `"${row.timeGenerated.replace(/\n/g, ' | ')}"`, `"${row.description}"`,
-                `"${row.eventSourceIp}"`, `"${row.serviceName}"`
-            ];
-            csv += line.join(",") + "\n";
-        });
-
-        const link = document.createElement("a");
-        link.setAttribute("href", encodeURI(csv));
-        link.setAttribute("download", "raport_logowania_uzytkownikow.csv");
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    }
+    document.getElementById('loginShowingCount').innerText = `Pokazujesz ${shown.length.toLocaleString('pl-PL')} z ${filtered.length.toLocaleString('pl-PL')} rekordów`;
+    document.getElementById('loginBadgeCount').innerText = ulgShowAll ? 'Wszystkie' : 'Top 10';
+    document.getElementById('loginBtnShowAll').innerText = ulgShowAll ? 'Pokaż mniej (10)' : `Pokaż wszystkie (${filtered.length.toLocaleString('pl-PL')})`;
+}
+function loginToggleAll() { ulgShowAll = !ulgShowAll; loginRenderTable(); }
+function ulgShowDetails(user) {
+    const d = ulgUsers[user];
+    if (!d) return;
+    document.body.style.overflow = 'hidden';
+    document.getElementById('loginUserModal').classList.remove('hidden');
+    document.getElementById('loginUserModal').classList.add('flex');
+    document.getElementById('loginModalTitle').innerText = `Profil bezpieczeństwa: ${user}`;
+    document.getElementById('ulgDetailHost').innerText = d.source_host || '-';
+    document.getElementById('ulgDetailSourceIp').innerText = d.source_ip || '-';
+    document.getElementById('ulgDetailDestIp').innerText = d.dest_ip || '-';
+    document.getElementById('ulgDetailDestHost').innerText = d.dest_host || '-';
+    document.getElementById('ulgDetailService').innerText = d.service_name || '-';
+    document.getElementById('ulgDetailAttempts').innerText = Number(d.events_count || 0).toLocaleString('pl-PL') + ' prób';
+    document.getElementById('ulgDetailDesc').innerText = d.description || '-';
+    document.getElementById('ulgUserHourGrid').innerHTML = ulgHourlyHtml(d.hourly || Array(24).fill(0));
+    if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+}
+function loginCloseModal() {
+    document.body.style.overflow = '';
+    document.getElementById('loginUserModal').classList.add('hidden');
+    document.getElementById('loginUserModal').classList.remove('flex');
+}
+document.addEventListener('DOMContentLoaded', () => { loginRenderTable(); if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons(); });
 </script>
