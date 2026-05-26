@@ -236,6 +236,16 @@ class RaportOdrzuconeWewnParser {
                 $protocolText = $this->getCellText($xpath, $cells[$iProtocol] ?? null);
                 $sourceCountryText = $this->getCellText($xpath, $cells[$iSourceCountry] ?? null);
                 $destCountryText = $this->getCellText($xpath, $cells[$iDestCountry] ?? null);
+
+                // Twardy fallback pod układ raportu Logsign:
+                // 0 Destination.IP, 1 EventMap.Info, 2 Destination.Position, 3 Destination.Port,
+                // 4 Service.Name, 5 Application.Name, 6 Protocol.Name, 7 Source.Country, 8 Destination.Country.
+                if (trim($sourceCountryText) === '' && isset($cells[7])) {
+                    $sourceCountryText = $this->getCellText($xpath, $cells[7]);
+                }
+                if (trim($destCountryText) === '' && isset($cells[8])) {
+                    $destCountryText = $this->getCellText($xpath, $cells[8]);
+                }
                 $eventInfoText = $this->getCellText($xpath, $cells[$iEventInfo] ?? null);
                 $eventDescText = $this->getCellText($xpath, $cells[$iEventDesc] ?? null);
                 $sourceHostText = $this->getCellText($xpath, $cells[$iSourceHost] ?? null);

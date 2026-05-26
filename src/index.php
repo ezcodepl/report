@@ -104,7 +104,7 @@ if ($selectedFile) {
             $reportType = 'skanowanie_port_host_zew';
             $parser = new RaportZewnSkanujaceParser($fullPath);
         } elseif (mb_stripos($filename, 'Odrzucone_poaczenia_z_hostow_wewnetrznych') !== false) {
-            $reportType = 'skanowanie_odrzucone_host_w';
+            $reportType = 'skanowanie_odrzucone_host_wew';
             $parser = new RaportOdrzuconeWewnParser($fullPath);
         } elseif (mb_stripos($filename, 'Odrzucone_poaczenia_z_hostow_zewnetrznych') !== false) {
             $reportType = 'skanowanie_odrzucone_host_zew';

@@ -134,7 +134,7 @@ foreach ($scans as $scan) {
     <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
         <div class="flex items-center justify-between">
             <div>
-                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Odrzucone połączenia Wewnętrzne</p>
+                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Odrzucone połączenia wewnętrzne</p>
                 <h3 class="mt-2 text-2xl font-bold text-red-600"><?php echo number_format((int)($parsedData['meta']['suma_zdarzen'] ?? 0), 0, ',', ' '); ?> <span class="text-xs font-medium text-slate-400">zd.</span></h3>
             </div>
             <div class="rounded-xl bg-red-50 p-3 text-red-600"><i data-lucide="shield-x" class="h-6 w-6"></i></div>
@@ -169,9 +169,10 @@ foreach ($scans as $scan) {
     </div>
 </div>
 
-<!-- Wykresy / TOP -->
-<div class="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-4">
-    <?php ohw_render_top_card('Source.Country — TOP kraje źródłowe', $sourceCountryCounts, 'flag', 'indigo'); ?>
+<!-- Wykresy / TOP: układ jak w odrzuconych zewnętrznych -->
+<div class="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-5">
+    <?php ohw_render_top_card('Source.Country', $sourceCountryCounts, 'globe-2', 'indigo'); ?>
+    <?php ohw_render_top_card('Destination.Country', $destCountryCounts, 'flag', 'blue'); ?>
     <?php ohw_render_top_card('TOP 5 Destination.Port', $portCounts, 'unplug', 'red'); ?>
     <?php ohw_render_top_card('TOP 5 Service.Name', $serviceCounts, 'cpu', 'emerald'); ?>
     <?php ohw_render_top_card('TOP 5 Protocol.Name', $protocolCounts, 'network', 'blue'); ?>
