@@ -191,9 +191,11 @@ class RaportOdrzuconeWewnParser {
         $uniqueIps = [];
         $ipCounts = [];
 
-        // Najważniejsze: każdy rekord to osobna tabela. Iterujemy wyłącznie po tabelach,
-        // które mają nagłówki Destination.IP + Source.Country + Time.Generated.
-        $tables = $xpath->query('//table[./thead/tr and .//th[contains(normalize-space(.), "Destination.IP")] and .//th[contains(normalize-space(.), "Source.Country")] and .//th[contains(normalize-space(.), "Time.Generated")]]');
+        // Najważniejsze: każdy rekord to osobna tabela.
+        // Nie filtrujemy po samym <th>, bo Logsign czasem robi nagłówki jako <td>.
+        // Iterujemy po tabelach, budujemy mapę nagłówków i dopiero wtedy sprawdzamy,
+        // czy to tabela rekordu: Destination.IP + Source.Country + Time.Generated.
+        $tables = $xpath->query('//table[./thead/tr]');
         if ($tables === false) return $data;
 
         foreach ($tables as $detailTable) {
@@ -253,6 +255,8 @@ class RaportOdrzuconeWewnParser {
 
                 $destIp = $this->cleanValue($destIpText, 'Dowolny');
                 $destPort = $this->cleanValue($portText, 'Dowolny');
+                // Source.Country (Term), np. "Poland (6051)\nCanada (1360)".
+                // Widok TOP używa source_country_raw, a source_country to tylko pierwsza etykieta do tabeli.
                 $sourceCountry = $this->cleanValue($sourceCountryText, 'Unknown');
                 $destCountry = $this->cleanValue($destCountryText, 'Unknown');
                 $protocol = $this->cleanValue($protocolText, 'Nieznany');

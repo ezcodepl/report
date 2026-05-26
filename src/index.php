@@ -104,10 +104,10 @@ if ($selectedFile) {
             $reportType = 'skanowanie_port_host_zew';
             $parser = new RaportZewnSkanujaceParser($fullPath);
         } elseif (mb_stripos($filename, 'Odrzucone_poaczenia_z_hostow_wewnetrznych') !== false) {
-            $reportType = 'skanowanie_odrzucone_host_wew';
+            $reportType = 'skanowanie_odrzucone_host_w';
             $parser = new RaportOdrzuconeWewnParser($fullPath);
         } elseif (mb_stripos($filename, 'Odrzucone_poaczenia_z_hostow_zewnetrznych') !== false) {
-            $reportType = 'skanowanie_odrzucone_hosty_zew';
+            $reportType = 'skanowanie_odrzucone_host_zew';
             $parser = new RaportOdrzuconeZewnParser($fullPath);
         } elseif (mb_stripos($filename, 'Poaczenia_wychodzace') !== false) {
             $reportType = 'skanowanie_niestandardowe_porty';

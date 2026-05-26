@@ -134,7 +134,7 @@ foreach ($scans as $scan) {
     <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
         <div class="flex items-center justify-between">
             <div>
-                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Odrzucone połączenia</p>
+                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Odrzucone połączenia Wewnętrzne</p>
                 <h3 class="mt-2 text-2xl font-bold text-red-600"><?php echo number_format((int)($parsedData['meta']['suma_zdarzen'] ?? 0), 0, ',', ' '); ?> <span class="text-xs font-medium text-slate-400">zd.</span></h3>
             </div>
             <div class="rounded-xl bg-red-50 p-3 text-red-600"><i data-lucide="shield-x" class="h-6 w-6"></i></div>
@@ -171,7 +171,7 @@ foreach ($scans as $scan) {
 
 <!-- Wykresy / TOP -->
 <div class="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-4">
-    <?php ohw_render_top_card('Destination.Country', $destCountryCounts, 'globe-2', 'indigo'); ?>
+    <?php ohw_render_top_card('Source.Country — TOP kraje źródłowe', $sourceCountryCounts, 'flag', 'indigo'); ?>
     <?php ohw_render_top_card('TOP 5 Destination.Port', $portCounts, 'unplug', 'red'); ?>
     <?php ohw_render_top_card('TOP 5 Service.Name', $serviceCounts, 'cpu', 'emerald'); ?>
     <?php ohw_render_top_card('TOP 5 Protocol.Name', $protocolCounts, 'network', 'blue'); ?>
@@ -209,7 +209,7 @@ foreach ($scans as $scan) {
         <table class="w-full border-collapse text-left" id="scans-table">
             <thead>
                 <tr class="border-b border-slate-100 bg-slate-50/50 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    <th class="px-4 py-3">Kraj docelowy</th>
+                    <th class="px-4 py-3">Kraj źródłowy</th>
                     <th class="px-4 py-3">Source IP</th>
                     <th class="px-4 py-3">Destination IP / Port</th>
                     <th class="px-4 py-3 text-center">Zdarzenia</th>
@@ -236,12 +236,13 @@ foreach ($scans as $scan) {
                         $rowBorder = 'border-l-4 border-l-blue-400';
                         if (($scan['danger_level'] ?? '') === 'High') { $badgeClass = 'bg-orange-50 text-orange-700 border border-orange-200'; $rowBorder = 'border-l-4 border-l-orange-400'; }
                         if (($scan['danger_level'] ?? '') === 'Critical') { $badgeClass = 'bg-red-50 text-red-700 border border-red-200'; $rowBorder = 'border-l-4 border-l-red-500'; }
+                        $sourceCountry = ohw_normalize_label($scan['source_country'] ?? 'Unknown');
                         $destCountry = ohw_normalize_label($scan['dest_country'] ?? 'Unknown');
                     ?>
                         <tr class="hover:bg-slate-50/50 <?php echo $rowBorder; ?>" id="<?php echo $rowId; ?>">
                             <td class="px-4 py-3.5">
-                                <span class="text-xl" title="<?php echo htmlspecialchars($destCountry); ?>"><?php echo $parser->getCountryFlag($destCountry); ?></span>
-                                <span class="ml-1.5 text-[10px] font-bold text-slate-500"><?php echo htmlspecialchars($destCountry); ?></span>
+                                <span class="text-xl" title="<?php echo htmlspecialchars($sourceCountry); ?>"><?php echo $parser->getCountryFlag($sourceCountry); ?></span>
+                                <span class="ml-1.5 text-[10px] font-bold text-slate-500"><?php echo htmlspecialchars($sourceCountry); ?></span>
                             </td>
                             <td class="px-4 py-3.5 font-mono font-bold text-slate-900">
                                 <div class="flex flex-col">
