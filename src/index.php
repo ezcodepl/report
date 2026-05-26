@@ -11,7 +11,7 @@ error_reporting(E_ALL);
 // Rejestracja parserów z folderu /parsers/
 require_once __DIR__ . '/parsers/parser.php';
 require_once __DIR__ . '/parsers/parser_skanowanie_wew.php';
-require_once __DIR__ . '/parsers/parser_bledne_proby_logowania.php';
+require_once __DIR__ . '/parsers/parser_host_logowanie.php';
 require_once __DIR__ . '/parsers/parser_skanowanie_zew.php';
 require_once __DIR__ . '/parsers/parser_odrzuconych_polaczen_wew.php';
 require_once __DIR__ . '/parsers/parser_odrzucownych_polaczen_zew.php';
@@ -98,8 +98,8 @@ if ($selectedFile) {
             $reportType = 'skanowanie_port_host_wew';
             $parser = new RaportWewnSkanujaceParser($fullPath);
         } elseif (mb_stripos($filename, 'Hosty_z_bednymi_probami_logowania') !== false) {
-            $reportType = 'skanowanie';
-            $parser = new RaportBedneLogowaniaHostyParser($fullPath);
+            $reportType = 'host_logowanie';
+            $parser = new RaportHostLogowanieParser($fullPath);
         } elseif (mb_stripos($filename, 'zewnetrzne_skanujace_porty') !== false) {
             $reportType = 'skanowanie_port_host_zew';
             $parser = new RaportZewnSkanujaceParser($fullPath);
@@ -246,6 +246,9 @@ if ($selectedFile) {
                         break;
                     case 'uzytkownicy_logowanie':
                         include __DIR__ . '/inc/view_uzytkownicy_logowanie.php';
+                        break;
+                     case 'host_logowanie':
+                        include __DIR__ . '/inc/view_host_logowanie.php';
                         break;
                     case 'skanowanie_port_host_wew':
                         include __DIR__ . '/inc/view_skanowanie_port_host_wew.php';

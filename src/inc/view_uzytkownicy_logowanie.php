@@ -152,7 +152,6 @@ foreach ($userMeta as $user => $meta) {
 <div class="min-h-screen bg-slate-50 pb-10 text-slate-800">
     <div class="mx-auto max-w-[1600px] px-4 pt-6 sm:px-6 lg:px-8">
 
-      
 
         <section class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div class="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -265,7 +264,7 @@ foreach ($userMeta as $user => $meta) {
                 <table class="w-full border-collapse text-left" id="loginLogsTable">
                     <thead>
                         <tr class="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                            <th class="px-6 py-4">Source.UserName</th><th class="px-6 py-4">Source.IP</th><th class="px-6 py-4">Source.HostName</th><th class="px-6 py-4">EventMap.SubType</th><th class="px-6 py-4">Time.Generated</th><th class="px-6 py-4">Service.Name</th><th class="px-6 py-4 text-right">Akcja</th>
+                            <th class="px-6 py-4">Source.UserName</th><th class="px-6 py-4 text-center">Próby logowania</th><th class="px-6 py-4">Source.IP</th><th class="px-6 py-4">Source.HostName</th><th class="px-6 py-4">EventMap.SubType</th><th class="px-6 py-4">Time.Generated</th><th class="px-6 py-4">Service.Name</th><th class="px-6 py-4 text-right">Akcja</th>
                         </tr>
                     </thead>
                     <tbody id="loginTableBody" class="divide-y divide-slate-100 text-sm text-slate-700"></tbody>
@@ -353,12 +352,13 @@ function loginRenderTable() {
     const body = document.getElementById('loginTableBody');
     body.innerHTML = '';
     if (shown.length === 0) {
-        body.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-slate-400">Brak rekordów pasujących do filtra.</td></tr>';
+        body.innerHTML = '<tr><td colspan="8" class="px-6 py-12 text-center text-slate-400">Brak rekordów pasujących do filtra.</td></tr>';
     } else {
         shown.forEach(r => {
             const user = r.user || '-';
             const firstTime = String(r.time_generated || '-').split('\n')[0] || '-';
-            body.innerHTML += `<tr class="cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50" onclick="ulgShowDetails('${ulgEscape(user)}')"><td class="whitespace-nowrap px-6 py-4 font-semibold text-slate-900">${ulgEscape(user)}</td><td class="px-6 py-4 font-mono text-xs text-slate-500">${ulgEscape(r.source_ip)}</td><td class="px-6 py-4 font-medium text-slate-600">${ulgEscape(r.source_host)}</td><td class="px-6 py-4">${ulgBadge(r.sub_type)}</td><td class="px-6 py-4 font-mono text-xs text-slate-500">${ulgEscape(firstTime)}</td><td class="px-6 py-4 text-slate-600"><span class="rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs text-slate-700">${ulgEscape(r.service_name)}</span></td><td class="px-6 py-4 text-right" onclick="event.stopPropagation()"><button onclick="ulgShowDetails('${ulgEscape(user)}')" class="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 transition hover:bg-indigo-600 hover:text-white">Szczegóły</button></td></tr>`;
+            const userAttempts = Number((ulgUsers[user] && ulgUsers[user].events_count) || r.events_count || 0);
+            body.innerHTML += `<tr class="cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50" onclick="ulgShowDetails('${ulgEscape(user)}')"><td class="whitespace-nowrap px-6 py-4 font-semibold text-slate-900">${ulgEscape(user)}</td><td class="px-6 py-4 text-center"><span class="inline-flex items-center justify-center rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-extrabold text-indigo-700" title="Łączna liczba prób logowania dla użytkownika">${userAttempts.toLocaleString('pl-PL')}</span></td><td class="px-6 py-4 font-mono text-xs text-slate-500">${ulgEscape(r.source_ip)}</td><td class="px-6 py-4 font-medium text-slate-600">${ulgEscape(r.source_host)}</td><td class="px-6 py-4">${ulgBadge(r.sub_type)}</td><td class="px-6 py-4 font-mono text-xs text-slate-500">${ulgEscape(firstTime)}</td><td class="px-6 py-4 text-slate-600"><span class="rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs text-slate-700">${ulgEscape(r.service_name)}</span></td><td class="px-6 py-4 text-right" onclick="event.stopPropagation()"><button onclick="ulgShowDetails('${ulgEscape(user)}')" class="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 transition hover:bg-indigo-600 hover:text-white">Szczegóły</button></td></tr>`;
         });
     }
     document.getElementById('loginShowingCount').innerText = `Pokazujesz ${shown.length.toLocaleString('pl-PL')} z ${filtered.length.toLocaleString('pl-PL')} rekordów`;
