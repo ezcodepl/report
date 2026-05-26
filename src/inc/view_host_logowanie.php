@@ -159,18 +159,7 @@ foreach ($hostMeta as $host => $meta) {
 <div class="min-h-screen bg-slate-50 pb-10 text-slate-800">
     <div class="mx-auto max-w-[1600px] px-4 pt-6 sm:px-6 lg:px-8">
 
-        <header class="mb-8 flex flex-col justify-between gap-4 border-b border-slate-200 pb-6 lg:flex-row lg:items-center">
-            <div>
-                <div class="flex items-center gap-3">
-                    <span class="relative flex h-3 w-3"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span><span class="relative inline-flex h-3 w-3 rounded-full bg-sky-600"></span></span>
-                    <h1 class="text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">HOST LOGIN SECURITY CENTER</h1>
-                </div>
-                <p class="mt-1 text-sm text-slate-500 sm:text-base">Dashboard prób logowania według Source.HostName, użytkowników i godzin aktywności</p>
-            </div>
-            <div class="rounded-2xl border border-sky-100 bg-white px-4 py-3 text-xs font-bold text-sky-700 shadow-sm">
-                <?php echo htmlspecialchars($parsedData['meta']['nazwa_pliku'] ?? 'Raport HTML'); ?>
-            </div>
-        </header>
+        
 
         <section class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div class="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

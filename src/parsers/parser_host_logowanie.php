@@ -197,11 +197,17 @@ class RaportHostLogowanieParser {
                 $timeList = $this->extractTimeGeneratedList($xpath, $cells[$iTime] ?? null);
                 $hourlyStats = $this->buildHourlyStats($timeList);
 
-                $events = $this->extractCount($sourceHostRaw, 1);
-                if ($events <= 1) $events = $this->extractCount($userRaw, 1);
-                if ($events <= 1 && !empty($timeList)) {
-                    $sumTime = array_sum(array_column($timeList, 'count'));
-                    if ($sumTime > 0) $events = $sumTime;
+                // Liczba prób logowania MUSI pochodzić z kolumny Time.Generated (Term),
+                // czyli z sumy wartości w nawiasach przy timestampach, np. 22:00:33 (10) => +10.
+                // Dzięki temu tabela, KPI oraz kafelki godzinowe są 1:1 zgodne z HTML-em.
+                $sumTime = !empty($timeList) ? array_sum(array_column($timeList, 'count')) : 0;
+                if ($sumTime > 0) {
+                    $events = (int)$sumTime;
+                } else {
+                    // Fallback tylko gdy raport nie zawiera pełnej listy Time.Generated.
+                    $events = $this->extractCount($sourceHostRaw, 1);
+                    if ($events <= 1) $events = $this->extractCount($userRaw, 1);
+                    if ($events <= 1) $events = $this->extractCount($sourceIpRaw, 1);
                 }
 
                 if ($sourceHost === '-' && $user === '-' && $sourceIp === '-' && $timeRaw === '') continue;

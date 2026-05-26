@@ -210,12 +210,18 @@ class RaportBedneLogowaniaUzytkownicyParser {
                 $timeList = $this->extractTimeGeneratedList($xpath, $cells[$iTime] ?? null);
                 $hourlyStats = $this->buildHourlyStats($timeList);
 
-                $events = $this->extractCount($userRaw, 1);
-                if ($events <= 1 && !empty($timeList)) {
-                    $sumTime = array_sum(array_column($timeList, 'count'));
-                    if ($sumTime > 0) $events = $sumTime;
+                // Liczba prób logowania pochodzi z Time.Generated (Term),
+                // a nie z liczby wierszy ani z losowych/demo danych.
+                // Każdy wpis typu 2026-05-23 22:00:33 (10) dodaje 10 prób.
+                $sumTime = !empty($timeList) ? array_sum(array_column($timeList, 'count')) : 0;
+                if ($sumTime > 0) {
+                    $events = (int)$sumTime;
+                } else {
+                    // Fallback tylko dla raportów bez pełnego Time.Generated.
+                    $events = $this->extractCount($userRaw, 1);
+                    if ($events <= 1) $events = $this->extractCount($sourceIpRaw, 1);
+                    if ($events <= 1) $events = $this->extractCount($sourceHostRaw, 1);
                 }
-                if ($events <= 1) $events = $this->extractCount($sourceIpRaw, 1);
 
                 if ($user === '-' && $sourceIp === '-' && $sourceHost === '-' && $timeRaw === '') continue;
 

@@ -152,6 +152,7 @@ foreach ($userMeta as $user => $meta) {
 <div class="min-h-screen bg-slate-50 pb-10 text-slate-800">
     <div class="mx-auto max-w-[1600px] px-4 pt-6 sm:px-6 lg:px-8">
 
+        
 
         <section class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div class="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
