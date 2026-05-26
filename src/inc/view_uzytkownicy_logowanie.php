@@ -173,46 +173,80 @@ foreach ($userMeta as $user => $meta) {
             </div>
         </section>
 
-        <div class="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-12">
-            <div class="flex flex-col gap-6 lg:col-span-5">
-                <div class="flex-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                    <div class="mb-6 flex items-center justify-between">
-                        <div><h2 class="text-lg font-bold tracking-tight text-slate-900">Top 5: Aktywni Użytkownicy</h2><p class="text-xs text-slate-500">Największa częstotliwość prób uwierzytelnienia</p></div>
-                        <span class="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">Source.UserName</span>
+        <!-- TOP 5: wykresy obok siebie -->
+        <div class="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div class="mb-6 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-bold tracking-tight text-slate-900">Top 5: Aktywni Użytkownicy</h2>
+                        <p class="text-xs text-slate-500">Największa liczba prób logowania według Source.UserName</p>
                     </div>
-                    <div class="space-y-4"><?php ulg_render_bar_list($userCounts, 'indigo', 'prób'); ?></div>
+                    <span class="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">Source.UserName</span>
                 </div>
-                <div class="flex-1 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                    <div class="mb-6 flex items-center justify-between">
-                        <div><h2 class="text-lg font-bold tracking-tight text-slate-900">Top 5: Hosty Źródłowe</h2><p class="text-xs text-slate-500">Hosty generujące najwięcej zdarzeń</p></div>
-                        <span class="rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">Source.HostName</span>
-                    </div>
-                    <div class="space-y-4"><?php ulg_render_bar_list($hostCounts, 'sky', 'prób'); ?></div>
-                </div>
+                <div class="space-y-4"><?php ulg_render_bar_list($userCounts, 'indigo', 'prób'); ?></div>
             </div>
 
-            <div class="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-7">
+            <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div class="mb-6 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-bold tracking-tight text-slate-900">Top 5: Hosty Źródłowe</h2>
+                        <p class="text-xs text-slate-500">Hosty generujące najwięcej zdarzeń według Source.HostName</p>
+                    </div>
+                    <span class="rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700">Source.HostName</span>
+                </div>
+                <div class="space-y-4"><?php ulg_render_bar_list($hostCounts, 'sky', 'prób'); ?></div>
+            </div>
+        </div>
+
+        <!-- ROZKŁAD GODZINOWY POD WYKRESAMI -->
+        <div class="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div class="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                 <div>
-                    <div class="mb-6 flex items-center justify-between">
-                        <div><h2 class="text-lg font-bold tracking-tight text-slate-900">Profil Godzinowy Incydentów</h2><p class="text-xs text-slate-500">Siatka 24-godzinna aktywności ze stopniem intensywności</p></div>
-                        <span class="rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">Zdarzenia / godz.</span>
-                    </div>
-                    <div class="mb-6 flex w-fit items-center gap-3 rounded-xl border border-slate-200/60 bg-slate-50 p-3 text-xs text-slate-600">
-                        <span class="font-medium text-slate-500">Intensywność:</span><span class="h-3.5 w-3.5 rounded border border-slate-200 bg-slate-100"></span><span>0</span><span class="h-3.5 w-3.5 rounded border border-indigo-100 bg-indigo-50"></span><span>Niska</span><span class="h-3.5 w-3.5 rounded border border-indigo-300 bg-indigo-200"></span><span>Średnia</span><span class="h-3.5 w-3.5 rounded bg-indigo-600 shadow-[0_0_6px_rgba(79,70,229,0.3)]"></span><span>Wysoka</span>
-                    </div>
-                    <div class="grid grid-cols-4 gap-3 sm:grid-cols-6 xl:grid-cols-8">
-                        <?php $maxGlobal = max($globalHourly) ?: 1; for ($h = 0; $h < 24; $h++): $count = (int)$globalHourly[$h]; $ratio = $count / $maxGlobal; $pct = $totalEvents > 0 ? round(($count / $totalEvents) * 100, 1) : 0; $bg = 'bg-slate-100 border-slate-200 text-slate-500'; $sub = 'text-slate-400'; if ($count > 0 && $ratio <= .3) { $bg = 'bg-indigo-50 border-indigo-100 text-indigo-700'; $sub = 'text-indigo-500'; } elseif ($count > 0 && $ratio <= .7) { $bg = 'bg-indigo-100 border-indigo-200 text-indigo-800'; $sub = 'text-indigo-600'; } elseif ($count > 0) { $bg = 'bg-indigo-600 border-indigo-600 text-white font-bold shadow-md shadow-indigo-600/20'; $sub = 'text-indigo-100'; } ?>
-                            <div class="flex h-[85px] flex-col justify-between rounded-xl border p-3 transition hover:scale-105 <?php echo $bg; ?>" title="Udział: <?php echo $pct; ?>% wszystkich zdarzeń">
-                                <span class="text-xs font-semibold uppercase tracking-wider opacity-75"><?php echo sprintf('%02d:00', $h); ?></span>
-                                <div class="mt-1 flex items-baseline justify-between"><span class="text-lg font-black"><?php echo number_format($count, 0, ',', ' '); ?></span><span class="text-[10px] font-medium <?php echo $sub; ?>"><?php echo $pct; ?>%</span></div>
-                            </div>
-                        <?php endfor; ?>
-                    </div>
+                    <h2 class="text-lg font-bold tracking-tight text-slate-900">Profil Godzinowy Incydentów</h2>
+                    <p class="text-xs text-slate-500">Siatka 24-godzinna aktywności. Zdarzenia po 16:00 są oznaczone na czerwono.</p>
                 </div>
-                <div class="mt-6 flex flex-col justify-between gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500 sm:flex-row sm:items-center">
-                    <span>Wskazówka: kliknij „Szczegóły”, żeby zobaczyć profil godzinowy wybranego usera.</span>
-                    <span class="font-semibold text-indigo-600">Profil globalny</span>
-                </div>
+                <span class="rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">Zdarzenia / godz.</span>
+            </div>
+
+            <div class="mb-6 flex w-fit flex-wrap items-center gap-3 rounded-xl border border-slate-200/60 bg-slate-50 p-3 text-xs text-slate-600">
+                <span class="font-medium text-slate-500">Intensywność:</span>
+                <span class="h-3.5 w-3.5 rounded border border-slate-200 bg-slate-100"></span><span>0</span>
+                <span class="h-3.5 w-3.5 rounded border border-indigo-100 bg-indigo-50"></span><span>Do 16:00</span>
+                <span class="h-3.5 w-3.5 rounded border border-red-200 bg-red-100"></span><span>Po 16:00</span>
+                <span class="h-3.5 w-3.5 rounded bg-red-600 shadow-[0_0_6px_rgba(220,38,38,0.3)]"></span><span>Po 16:00 wysoka</span>
+            </div>
+
+            <div class="grid grid-cols-4 gap-3 sm:grid-cols-6 lg:grid-cols-12">
+                <?php $maxGlobal = max($globalHourly) ?: 1; for ($h = 0; $h < 24; $h++):
+                    $count = (int)$globalHourly[$h];
+                    $ratio = $count / $maxGlobal;
+                    $pct = $totalEvents > 0 ? round(($count / $totalEvents) * 100, 1) : 0;
+                    $afterHours = $h >= 16 && $count > 0;
+                    $bg = 'bg-slate-100 border-slate-200 text-slate-500';
+                    $sub = 'text-slate-400';
+
+                    if ($count > 0) {
+                        if ($afterHours) {
+                            if ($ratio <= .3) { $bg = 'bg-red-50 border-red-100 text-red-700'; $sub = 'text-red-500'; }
+                            elseif ($ratio <= .7) { $bg = 'bg-red-100 border-red-200 text-red-800'; $sub = 'text-red-600'; }
+                            else { $bg = 'bg-red-600 border-red-600 text-white font-bold shadow-md shadow-red-600/20'; $sub = 'text-red-100'; }
+                        } else {
+                            if ($ratio <= .3) { $bg = 'bg-indigo-50 border-indigo-100 text-indigo-700'; $sub = 'text-indigo-500'; }
+                            elseif ($ratio <= .7) { $bg = 'bg-indigo-100 border-indigo-200 text-indigo-800'; $sub = 'text-indigo-600'; }
+                            else { $bg = 'bg-indigo-600 border-indigo-600 text-white font-bold shadow-md shadow-indigo-600/20'; $sub = 'text-indigo-100'; }
+                        }
+                    }
+                ?>
+                    <div class="flex h-[85px] flex-col justify-between rounded-xl border p-3 transition hover:scale-105 <?php echo $bg; ?>" title="<?php echo $afterHours ? 'Po 16:00 — ' : ''; ?>Udział: <?php echo $pct; ?>% wszystkich zdarzeń">
+                        <span class="text-xs font-semibold uppercase tracking-wider opacity-75"><?php echo sprintf('%02d:00', $h); ?></span>
+                        <div class="mt-1 flex items-baseline justify-between"><span class="text-lg font-black"><?php echo number_format($count, 0, ',', ' '); ?></span><span class="text-[10px] font-medium <?php echo $sub; ?>"><?php echo $pct; ?>%</span></div>
+                    </div>
+                <?php endfor; ?>
+            </div>
+
+            <div class="mt-6 flex flex-col justify-between gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500 sm:flex-row sm:items-center">
+                <span>Wskazówka: godziny 16:00–23:00 z jakimikolwiek próbami logowania są wyróżnione kolorem czerwonym.</span>
+                <span class="font-semibold text-indigo-600">Profil globalny</span>
             </div>
         </div>
 
@@ -291,12 +325,24 @@ function ulgHourlyHtml(hours) {
     for (let h = 0; h < 24; h++) {
         const count = Number(hours[h] || 0);
         const ratio = count / max;
+        const afterHours = h >= 16 && count > 0;
         let cls = 'bg-slate-50 border-slate-200 text-slate-400';
         let label = 'text-slate-500';
-        if (count > 0 && ratio <= .3) { cls = 'bg-indigo-50 border-indigo-100 text-indigo-700'; label = 'text-indigo-600'; }
-        else if (count > 0 && ratio <= .7) { cls = 'bg-indigo-100 border-indigo-200 text-indigo-800'; label = 'text-indigo-700'; }
-        else if (count > 0) { cls = 'bg-indigo-600 border-indigo-600 text-white font-bold'; label = 'text-indigo-100'; }
-        html += `<div class="flex h-[65px] flex-col justify-between rounded-xl border p-2.5 transition hover:bg-slate-100 ${cls}"><span class="text-[10px] font-bold uppercase ${label}">${String(h).padStart(2,'0')}:00</span><span class="mt-1 text-right text-sm font-extrabold">${count.toLocaleString('pl-PL')}</span></div>`;
+
+        if (count > 0) {
+            if (afterHours) {
+                if (ratio <= .3) { cls = 'bg-red-50 border-red-100 text-red-700'; label = 'text-red-600'; }
+                else if (ratio <= .7) { cls = 'bg-red-100 border-red-200 text-red-800'; label = 'text-red-700'; }
+                else { cls = 'bg-red-600 border-red-600 text-white font-bold shadow-md shadow-red-600/20'; label = 'text-red-100'; }
+            } else {
+                if (ratio <= .3) { cls = 'bg-indigo-50 border-indigo-100 text-indigo-700'; label = 'text-indigo-600'; }
+                else if (ratio <= .7) { cls = 'bg-indigo-100 border-indigo-200 text-indigo-800'; label = 'text-indigo-700'; }
+                else { cls = 'bg-indigo-600 border-indigo-600 text-white font-bold'; label = 'text-indigo-100'; }
+            }
+        }
+
+        const title = afterHours ? 'Po 16:00 — zdarzenia: ' + count.toLocaleString('pl-PL') : 'Zdarzenia: ' + count.toLocaleString('pl-PL');
+        html += `<div class="flex h-[65px] flex-col justify-between rounded-xl border p-2.5 transition hover:scale-[1.03] ${cls}" title="${title}"><span class="text-[10px] font-bold uppercase ${label}">${String(h).padStart(2,'0')}:00</span><span class="mt-1 text-right text-sm font-extrabold">${count.toLocaleString('pl-PL')}</span></div>`;
     }
     return html;
 }
