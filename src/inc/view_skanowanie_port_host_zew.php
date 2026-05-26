@@ -88,7 +88,7 @@ if (!function_exists('buildScanHourlyEvents')) {
     <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm hover:shadow-md transition-all duration-200">
         <div class="flex items-center justify-between">
             <div>
-                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Wykryte Zdarzenia</p>
+                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Wykryte skanowania</p>
                 <h3 class="mt-2 text-2xl font-bold text-red-600"><?php echo number_format($parsedData['meta']['suma_zdarzen'], 0, ',', ' '); ?> <span class="text-xs font-medium text-slate-400">zd.</span></h3>
             </div>
             <div class="rounded-xl bg-red-50 p-3 text-red-600 animate-pulse">
@@ -100,7 +100,7 @@ if (!function_exists('buildScanHourlyEvents')) {
     <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm hover:shadow-md transition-all duration-200">
         <div class="flex items-center justify-between">
             <div>
-                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Aktywni Agresorzy</p>
+                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Aktywne Hosty Zewnętrzne</p>
                 <h3 class="mt-2 text-2xl font-bold text-slate-900"><?php echo $parsedData['meta']['unikalne_ip']; ?> <span class="text-xs font-medium text-slate-400">hostów</span></h3>
             </div>
             <div class="rounded-xl bg-slate-100 p-3 text-slate-600">
@@ -112,7 +112,7 @@ if (!function_exists('buildScanHourlyEvents')) {
     <div class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm hover:shadow-md transition-all duration-200">
         <div class="flex items-center justify-between">
             <div>
-                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Główny Agresor (IP)</p>
+                <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Najaktywniejszy Host (IP)</p>
                 <h3 class="mt-2 text-md font-bold text-red-700 font-mono truncate" title="<?php echo htmlspecialchars($parsedData['meta']['najbardziej_aktywny_ip']); ?>">
                     <?php echo htmlspecialchars($parsedData['meta']['najbardziej_aktywny_ip']); ?>
                 </h3>
@@ -135,7 +135,6 @@ if (!function_exists('buildScanHourlyEvents')) {
         </div>
     </div>
 </div>
-
 <!-- Sekcja Wykresów Podsumowujących Krajów, Portów, Usług i Protokołów -->
 <?php
 if (!function_exists('zewScanNormalizeStatText')) {

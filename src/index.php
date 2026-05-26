@@ -104,13 +104,13 @@ if ($selectedFile) {
             $reportType = 'skanowanie_port_host_zew';
             $parser = new RaportZewnSkanujaceParser($fullPath);
         } elseif (mb_stripos($filename, 'Odrzucone_poaczenia_z_hostow_wewnetrznych') !== false) {
-            $reportType = 'skanowanie';
+            $reportType = 'skanowanie_odrzucone_host_wew';
             $parser = new RaportOdrzuconeWewnParser($fullPath);
         } elseif (mb_stripos($filename, 'Odrzucone_poaczenia_z_hostow_zewnetrznych') !== false) {
-            $reportType = 'skanowanie';
+            $reportType = 'skanowanie_odrzucone_hosty_zew';
             $parser = new RaportOdrzuconeZewnParser($fullPath);
         } elseif (mb_stripos($filename, 'Poaczenia_wychodzace') !== false) {
-            $reportType = 'skanowanie';
+            $reportType = 'skanowanie_niestandardowe_porty';
             $parser = new RaportWychodzaceNiestandardoweParser($fullPath);
         } elseif (mb_stripos($filename, 'Uzytkownicy_z_bednymi_probami_logowania') !== false) {
             $reportType = 'uzytkownicy_logowanie';
@@ -249,6 +249,15 @@ if ($selectedFile) {
                         break;
                     case 'skanowanie_port_host_wew':
                         include __DIR__ . '/inc/view_skanowanie_port_host_wew.php';
+                        break;
+                    case 'skanowanie_odrzucone_host_wew':
+                        include __DIR__ . '/inc/view_polaczenia_host_wew.php';
+                        break;
+                    case 'skanowanie_odrzucone_host_zew':
+                        include __DIR__ . '/inc/view_polaczenia_host_zew.php';
+                        break;
+                    case 'skanowanie_niestandardowe_porty':
+                        include __DIR__ . '/inc/view_niestandardowe_porty.php';
                         break;
                     case 'skanowanie_port_host_zew':
                     default:
