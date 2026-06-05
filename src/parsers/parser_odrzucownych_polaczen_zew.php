@@ -123,6 +123,13 @@ class RaportOdrzuconeZewnParser {
         return null;
     }
 
+    private function isDetailTable(array $headerMap): bool {
+        // Rekord zewnętrzny musi mieć kraj źródłowy i czas. Source.IP bywa w osobnej komórce/bloku,
+        // więc nie wymagamy go twardo, żeby nie wyciąć poprawnych rekordów.
+        return $this->idx($headerMap, ['Source.Country']) !== null
+            && $this->idx($headerMap, ['Time.Generated']) !== null;
+    }
+
     private function findSourceIpForTable(DOMXPath $xpath, DOMNode $table): string {
         $node = $table;
         for ($i = 0; $i < 6 && $node; $i++, $node = $node->parentNode) {
@@ -159,7 +166,7 @@ class RaportOdrzuconeZewnParser {
         libxml_clear_errors();
         $xpath = new DOMXPath($dom);
 
-        $tables = $xpath->query('//table[.//th[contains(normalize-space(.), "Source.Country")] and .//th[contains(normalize-space(.), "Time.Generated")]]');
+        $tables = $xpath->query('//table[.//thead/tr]');
         if ($tables === false) return $data;
 
         $uniqueIps = [];
@@ -168,7 +175,7 @@ class RaportOdrzuconeZewnParser {
 
         foreach ($tables as $table) {
             $headerMap = $this->findHeaderMap($xpath, $table);
-            if (!$headerMap) continue;
+            if (!$headerMap || !$this->isDetailTable($headerMap)) continue;
 
             $iSourceIp = $this->idx($headerMap, ['Source.IP']);
             $iDestIp = $this->idx($headerMap, ['Destination.IP']);
@@ -208,6 +215,18 @@ class RaportOdrzuconeZewnParser {
                 $protocolText = $this->getCellText($xpath, $cells[$iProtocol] ?? null);
                 $sourceCountryText = $this->getCellText($xpath, $cells[$iSourceCountry] ?? null);
                 $destCountryText = $this->getCellText($xpath, $cells[$iDestCountry] ?? null);
+
+                // Fallback pod typowy układ tabeli zewnętrznej Logsign:
+                // 0 Source.IP, 1 Destination.IP, 2 EventMap.Info, 3 Destination.Position,
+                // 4 Destination.Port, 5 Service.Name, 6 Application.Name,
+                // 7 Protocol.Name, 8 Source.Country, 9 Destination.Country.
+                if (trim($sourceCountryText) === '' && isset($cells[8])) {
+                    $sourceCountryText = $this->getCellText($xpath, $cells[8]);
+                }
+                if (trim($destCountryText) === '' && isset($cells[9])) {
+                    $destCountryText = $this->getCellText($xpath, $cells[9]);
+                }
+
                 $eventInfoText = $this->getCellText($xpath, $cells[$iEventInfo] ?? null);
                 $eventDescText = $this->getCellText($xpath, $cells[$iEventDesc] ?? null);
                 $sourceHostText = $this->getCellText($xpath, $cells[$iSourceHost] ?? null);
@@ -248,6 +267,7 @@ class RaportOdrzuconeZewnParser {
                     'protocol' => $protocol,
                     'service' => $service,
                     'application' => $app,
+                    'application_raw' => $appText,
                     'source_country' => $sourceCountry,
                     'source_country_raw' => $sourceCountryText,
                     'dest_country' => $destCountry,

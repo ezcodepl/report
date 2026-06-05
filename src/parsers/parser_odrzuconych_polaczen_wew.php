@@ -127,6 +127,34 @@ class RaportOdrzuconeWewnParser {
         return null;
     }
 
+    private function normalizeHeaderName($name) {
+        $name = $this->normalizeText($name);
+        $name = preg_replace('/\s+/u', ' ', $name);
+        return trim($name);
+    }
+
+    private function idxExact(array $headerMap, array $exactNames) {
+        $wanted = [];
+        foreach ($exactNames as $name) {
+            $wanted[] = mb_strtolower($this->normalizeHeaderName($name), 'UTF-8');
+        }
+        foreach ($headerMap as $name => $i) {
+            $normalized = mb_strtolower($this->normalizeHeaderName($name), 'UTF-8');
+            if (in_array($normalized, $wanted, true)) return $i;
+        }
+        return null;
+    }
+
+    private function idxEventInfoTerm(array $headerMap) {
+        $exact = $this->idxExact($headerMap, ['EventMap.Info (Term)', 'EventMap.Info Term']);
+        if ($exact !== null) return $exact;
+        foreach ($headerMap as $name => $i) {
+            $normalized = mb_strtolower($this->normalizeHeaderName($name), 'UTF-8');
+            if (strpos($normalized, 'eventmap.info') !== false && strpos($normalized, 'term') !== false) return $i;
+        }
+        return null;
+    }
+
     private function isDetailTable(array $headerMap) {
         $hasDest = $this->idx($headerMap, ['Destination.IP']) !== null;
         $hasSourceCountry = $this->idx($headerMap, ['Source.Country']) !== null;
@@ -206,15 +234,15 @@ class RaportOdrzuconeWewnParser {
             if ($sourceIp === '') $sourceIp = 'Host wewnętrzny';
 
             $iDestIp = $this->idx($headerMap, ['Destination.IP']);
-            $iEventValue = $this->idx($headerMap, ['EventMap.Info (Value)', 'EventMap.Info Value']);
+            $iEventValue = $this->idxExact($headerMap, ['EventMap.Info (Value)', 'EventMap.Info Value']);
             $iPosition = $this->idx($headerMap, ['Destination.Position']);
             $iPort = $this->idx($headerMap, ['Destination.Port']);
             $iService = $this->idx($headerMap, ['Service.Name', 'Service']);
             $iApp = $this->idx($headerMap, ['Application.Name', 'Application']);
             $iProtocol = $this->idx($headerMap, ['Protocol.Name', 'Protocol']);
             $iSourceCountry = $this->idx($headerMap, ['Source.Country']);
-            $iDestCountry = $this->idx($headerMap, ['Destination.Country']);
-            $iEventInfo = $this->idx($headerMap, ['EventMap.Info (Term)', 'EventMap.Info']);
+            $iDestCountry = $this->idxExact($headerMap, ['Destination.Country', 'Destination.Country (Term)', 'Destination.Country Term']);
+            $iEventInfo = $this->idxEventInfoTerm($headerMap);
             $iEventDesc = $this->idx($headerMap, ['EventSource.Description']);
             $iSourceHost = $this->idx($headerMap, ['Source.HostName']);
             $iDestHost = $this->idx($headerMap, ['Destination.HostName']);
@@ -237,14 +265,13 @@ class RaportOdrzuconeWewnParser {
                 $sourceCountryText = $this->getCellText($xpath, $cells[$iSourceCountry] ?? null);
                 $destCountryText = $this->getCellText($xpath, $cells[$iDestCountry] ?? null);
 
-                // Twardy fallback pod układ raportu Logsign:
-                // 0 Destination.IP, 1 EventMap.Info, 2 Destination.Position, 3 Destination.Port,
-                // 4 Service.Name, 5 Application.Name, 6 Protocol.Name, 7 Source.Country, 8 Destination.Country.
+                // Twardy fallback tylko dla Source.Country pod typowy układ Logsign:
+                // 0 Destination.IP, 1 EventMap.Info (Value), 2 Destination.Position, 3 Destination.Port,
+                // 4 Service.Name, 5 Application.Name, 6 Protocol.Name, 7 Source.Country (Term),
+                // 8 EventMap.Info (Term). Nie wolno mapować kolumny 8 jako Destination.Country,
+                // bo wtedy wartości typu "Network Connection Deny" trafiają do TOP Destination.Country.
                 if (trim($sourceCountryText) === '' && isset($cells[7])) {
                     $sourceCountryText = $this->getCellText($xpath, $cells[7]);
-                }
-                if (trim($destCountryText) === '' && isset($cells[8])) {
-                    $destCountryText = $this->getCellText($xpath, $cells[8]);
                 }
                 $eventInfoText = $this->getCellText($xpath, $cells[$iEventInfo] ?? null);
                 $eventDescText = $this->getCellText($xpath, $cells[$iEventDesc] ?? null);
