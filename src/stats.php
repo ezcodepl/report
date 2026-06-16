@@ -240,142 +240,39 @@ $topHoursRaw = [];
 foreach ($hourCounts as $hour => $count) $topHoursRaw[sprintf('%02d:00', $hour)] = $count;
 $topHours = socTop($topHoursRaw);
 
-function socPercentValue($value, $total) {
-    $total = (float)$total;
-    if ($total <= 0) return 0;
-    return round(((float)$value / $total) * 100, 1);
-}
-
-function socFormatStatValue($value, $unit = 'zd.', $isTransfer = false) {
-    if ($isTransfer) return socFormatMb($value);
-    return number_format((int)$value, 0, ',', ' ') . ' ' . $unit;
-}
-
-function socPalette($idx) {
-    $colors = [
-        '#2563eb', '#7c3aed', '#dc2626', '#f97316', '#16a34a',
-        '#0891b2', '#db2777', '#65a30d', '#0f766e', '#475569'
+function chartPayload($items, $format = 'number') {
+    return [
+        'labels' => array_keys($items),
+        'values' => array_values($items),
+        'format' => $format
     ];
-    return $colors[$idx % count($colors)];
 }
 
-function renderDonutCard($id, $title, $subtitle, $items, $unit = 'zd.', $isTransfer = false, $icon = 'pie-chart') {
-    $items = socTop($items, 10);
-    $total = array_sum($items);
-    $circumference = 2 * pi() * 82;
-    ?>
-    <div class="pdf-card rounded-[1.35rem] border border-slate-200/70 bg-white p-6 shadow-sm ring-1 ring-slate-100/70">
-        <div class="mb-5 flex items-start justify-between gap-4">
-            <div>
-                <div class="flex items-center gap-2">
-                    <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                        <i data-lucide="<?php echo htmlspecialchars($icon); ?>" class="h-4.5 w-4.5"></i>
-                    </div>
-                    <h3 class="text-sm font-black uppercase tracking-wide text-slate-950"><?php echo htmlspecialchars($title); ?></h3>
-                </div>
-                <p class="mt-1 text-xs font-semibold text-slate-400"><?php echo htmlspecialchars($subtitle); ?></p>
-            </div>
-            <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-extrabold text-slate-500">TOP 10</span>
-        </div>
+$charts = [
+    'transferHosts' => chartPayload($topTransferHosts, 'mb'),
+    'failedUsers' => chartPayload($topFailedUsers),
+    'attackCountries' => chartPayload($topAttackCountries),
+    'hours' => chartPayload($topHours),
+    'ports' => chartPayload($topPorts),
+    'apps' => chartPayload($topApps),
+    'services' => chartPayload($topServices),
+];
 
-        <?php if (empty($items) || $total <= 0): ?>
-            <div class="flex h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 text-center">
-                <i data-lucide="circle-off" class="mb-2 h-8 w-8 text-slate-300"></i>
-                <p class="text-xs font-bold text-slate-400">Brak danych dla tego wykresu</p>
-            </div>
-        <?php else: ?>
-            <div class="grid grid-cols-1 gap-6 lg:grid-cols-[310px_1fr] lg:items-center">
-                <div class="relative mx-auto h-[310px] w-[310px]">
-                    <svg viewBox="0 0 240 240" class="h-full w-full drop-shadow-sm" role="img" aria-label="<?php echo htmlspecialchars($title); ?>">
-                        <circle cx="120" cy="120" r="82" fill="none" stroke="#f1f5f9" stroke-width="34"></circle>
-                        <?php
-                        $offset = 0.0;
-                        $idxColor = 0;
-                        foreach ($items as $label => $value):
-                            $dash = ((float)$value / (float)$total) * $circumference;
-                            $gap = $circumference - $dash;
-                            $color = socPalette($idxColor++);
-                        ?>
-                            <circle cx="120" cy="120" r="82" fill="none"
-                                    stroke="<?php echo $color; ?>" stroke-width="34" stroke-linecap="round"
-                                    stroke-dasharray="<?php echo number_format($dash, 3, '.', ''); ?> <?php echo number_format($gap, 3, '.', ''); ?>"
-                                    stroke-dashoffset="-<?php echo number_format($offset, 3, '.', ''); ?>"
-                                    transform="rotate(-90 120 120)"></circle>
-                        <?php
-                            $offset += $dash;
-                        endforeach;
-                        ?>
-                        <circle cx="120" cy="120" r="54" fill="white"></circle>
-                    </svg>
-                    <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
-                        <div class="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Suma</div>
-                        <div class="mt-1 max-w-[150px] truncate text-xl font-black text-slate-950" title="<?php echo htmlspecialchars(socFormatStatValue($total, $unit, $isTransfer)); ?>">
-                            <?php echo htmlspecialchars(socFormatStatValue($total, $unit, $isTransfer)); ?>
-                        </div>
-                        <div class="mt-1 text-[11px] font-bold text-blue-600">100%</div>
-                    </div>
-                </div>
-
-                <div class="space-y-2.5">
-                    <?php
-                    $i = 0;
-                    foreach ($items as $label => $value):
-                        $percent = socPercentValue($value, $total);
-                        $color = socPalette($i);
-                    ?>
-                        <div class="rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
-                            <div class="mb-2 flex items-center justify-between gap-3">
-                                <div class="flex min-w-0 items-center gap-2">
-                                    <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background: <?php echo $color; ?>"></span>
-                                    <span class="truncate text-xs font-extrabold text-slate-800" title="<?php echo htmlspecialchars($label); ?>">
-                                        <?php echo ($i + 1); ?>. <?php echo htmlspecialchars($label); ?>
-                                    </span>
-                                </div>
-                                <span class="shrink-0 rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-blue-700 shadow-sm">
-                                    <?php echo number_format($percent, 1, ',', ' '); ?>%
-                                </span>
-                            </div>
-                            <div class="flex items-center gap-3">
-                                <div class="h-2 flex-1 overflow-hidden rounded-full bg-white">
-                                    <div class="h-full rounded-full" style="width: <?php echo min(100, $percent); ?>%; background: <?php echo $color; ?>"></div>
-                                </div>
-                                <div class="w-28 shrink-0 text-right text-[11px] font-black text-slate-700">
-                                    <?php echo htmlspecialchars(socFormatStatValue($value, $unit, $isTransfer)); ?>
-                                </div>
-                            </div>
-                        </div>
-                    <?php $i++; endforeach; ?>
-                </div>
-            </div>
-
-            <div class="mt-5 overflow-hidden rounded-2xl border border-slate-100">
-                <table class="w-full text-left">
-                    <thead class="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-400">
-                        <tr>
-                            <th class="w-12 px-4 py-3">#</th>
-                            <th class="px-4 py-3">Nazwa</th>
-                            <th class="px-4 py-3 text-right">Wartość</th>
-                            <th class="px-4 py-3 text-right">Udział</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php $row = 1; foreach ($items as $label => $value): ?>
-                            <tr class="border-t border-slate-50">
-                                <td class="px-4 py-2.5 text-xs font-black text-slate-400"><?php echo $row++; ?></td>
-                                <td class="px-4 py-2.5 text-xs font-bold text-slate-700"><span class="line-clamp-1" title="<?php echo htmlspecialchars($label); ?>"><?php echo htmlspecialchars($label); ?></span></td>
-                                <td class="whitespace-nowrap px-4 py-2.5 text-right text-xs font-black text-blue-700"><?php echo htmlspecialchars(socFormatStatValue($value, $unit, $isTransfer)); ?></td>
-                                <td class="whitespace-nowrap px-4 py-2.5 text-right text-xs font-black text-slate-900"><?php echo number_format(socPercentValue($value, $total), 1, ',', ' '); ?>%</td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php endif; ?>
-    </div>
-    <?php
+function renderTableRows($items, $unit = 'zd.', $isTransfer = false) {
+    if (empty($items)) {
+        echo '<tr><td colspan="3" class="px-4 py-6 text-center text-xs font-semibold text-slate-400">Brak danych</td></tr>';
+        return;
+    }
+    $i = 1;
+    foreach ($items as $label => $value) {
+        $displayValue = $isTransfer ? socFormatMb($value) : number_format((int)$value, 0, ',', ' ') . ' ' . $unit;
+        echo '<tr class="border-b border-slate-50 last:border-0">';
+        echo '<td class="w-10 px-4 py-2 text-xs font-bold text-slate-400">' . $i++ . '</td>';
+        echo '<td class="px-4 py-2 text-xs font-semibold text-slate-700"><span class="line-clamp-1" title="' . htmlspecialchars($label) . '">' . htmlspecialchars($label) . '</span></td>';
+        echo '<td class="whitespace-nowrap px-4 py-2 text-right text-xs font-extrabold text-blue-700">' . htmlspecialchars($displayValue) . '</td>';
+        echo '</tr>';
+    }
 }
-
-$printMode = isset($_GET['print']) && $_GET['print'] === '1';
 ?>
 <!DOCTYPE html>
 <html lang="pl">
@@ -384,76 +281,70 @@ $printMode = isset($_GET['print']) && $_GET['print'] === '1';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Statystyki SOC - Logsign</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        .pdf-card { break-inside: avoid; page-break-inside: avoid; }
-        @media print {
-            @page { size: A4 landscape; margin: 10mm; }
-            body { background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .no-print { display: none !important; }
-            header { position: static !important; }
-            main { padding: 0 !important; max-width: none !important; }
-            .pdf-card { box-shadow: none !important; border-color: #e2e8f0 !important; margin-bottom: 12px; }
-            .print-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 12px !important; }
-        }
+        .chart-canvas-wrap { position: relative; height: 280px; width: 100%; }
+        .chart-canvas-wrap canvas { display: block; width: 100% !important; height: 280px !important; }
+        @media print { .no-print { display: none !important; } .chart-canvas-wrap { height: 260px; } .chart-canvas-wrap canvas { height: 260px !important; } }
     </style>
 </head>
 <body class="text-slate-800 antialiased">
-<header class="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/85 backdrop-blur-md">
+<header class="sticky top-0 z-40 w-full border-b border-slate-200 bg-white/80 backdrop-blur-md">
     <div class="flex h-16 items-center justify-between px-6">
         <div class="flex items-center gap-3">
             <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-200">
                 <i data-lucide="pie-chart" class="h-6 w-6"></i>
             </div>
             <div>
-                <h1 class="text-lg font-black leading-none text-slate-900">Statystyki SOC z raportów Logsign</h1>
+                <h1 class="text-lg font-bold leading-none text-slate-900">Statystyki SOC z raportów Logsign</h1>
                 <span class="font-mono text-xs font-medium text-slate-400">Zakres: ostatnie <?php echo (int)$period; ?> dni względem najnowszego raportu</span>
             </div>
         </div>
-        <div class="no-print flex items-center gap-2">
-            <a href="index.php" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">
+        <div class="flex items-center gap-2">
+            <a href="index.php" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
                 <i data-lucide="arrow-left" class="h-4 w-4"></i>
                 Raporty
             </a>
-            <a href="stats.php?period=<?php echo (int)$period; ?>&print=1" target="_blank" class="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-black text-white shadow-sm hover:bg-rose-500">
-                <i data-lucide="file-down" class="h-4 w-4"></i>
-                Exportuj raport do PDF
+            <a href="index.php#upload" onclick="event.preventDefault(); window.location.href='index.php';" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500">
+                <i data-lucide="upload-cloud" class="h-4 w-4"></i>
+                Wgraj paczkę ZIP
             </a>
         </div>
     </div>
 </header>
 
-<main class="mx-auto max-w-[1780px] p-6 lg:p-8">
-    <section class="mb-6 flex flex-col justify-between gap-4 rounded-[1.35rem] border border-slate-100 bg-white p-5 shadow-sm lg:flex-row lg:items-center">
+<main class="mx-auto max-w-[1700px] p-6 lg:p-8">
+    <section class="mb-6 flex flex-col justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm lg:flex-row lg:items-center">
         <div>
-            <h2 class="text-2xl font-black text-slate-950">Dashboard zbiorczy</h2>
+            <h2 class="text-xl font-extrabold text-slate-950">Dashboard zbiorczy</h2>
             <p class="mt-1 text-sm text-slate-500">Agregacja ze wszystkich plików HTML w katalogu <span class="font-mono">/dane</span> dla wybranego zakresu.</p>
-            <p class="mt-1 text-xs font-bold text-slate-400">
+            <p class="mt-1 text-xs font-semibold text-slate-400">
                 Najnowszy raport: <?php echo htmlspecialchars($latestDate ?? 'brak'); ?> · Start zakresu: <?php echo htmlspecialchars($startDate ?? 'brak'); ?>
             </p>
         </div>
-        <div class="no-print flex flex-wrap gap-2">
+        <div class="flex flex-wrap gap-2 no-print">
             <?php foreach ([3, 7, 30] as $p): ?>
-                <a href="stats.php?period=<?php echo $p; ?>" class="rounded-xl px-4 py-2 text-sm font-black transition <?php echo $period === $p ? 'bg-blue-600 text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'; ?>">
+                <a href="stats.php?period=<?php echo $p; ?>" class="rounded-xl px-4 py-2 text-sm font-bold transition <?php echo $period === $p ? 'bg-blue-600 text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'; ?>">
                     Ostatnie <?php echo $p; ?> dni
                 </a>
             <?php endforeach; ?>
-            <a href="stats.php?period=<?php echo (int)$period; ?>&print=1" target="_blank" class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-rose-500">
-                PDF
+            <a href="stats.php?period=<?php echo (int)$period; ?>&print=1" target="_blank" class="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-slate-800">
+                <i data-lucide="file-down" class="h-4 w-4"></i> Eksportuj PDF
             </a>
         </div>
     </section>
 
     <section class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div class="rounded-[1.25rem] border border-slate-100 bg-white p-5 shadow-sm"><p class="text-xs font-black uppercase tracking-wider text-slate-400">Przetworzone pliki</p><h3 class="mt-2 text-3xl font-black text-slate-900"><?php echo number_format($filesParsed, 0, ',', ' '); ?></h3></div>
-        <div class="rounded-[1.25rem] border border-slate-100 bg-white p-5 shadow-sm"><p class="text-xs font-black uppercase tracking-wider text-slate-400">Łącznie zdarzeń</p><h3 class="mt-2 text-3xl font-black text-red-600"><?php echo number_format($totalEvents, 0, ',', ' '); ?></h3></div>
-        <div class="rounded-[1.25rem] border border-slate-100 bg-white p-5 shadow-sm"><p class="text-xs font-black uppercase tracking-wider text-slate-400">Zakres danych</p><h3 class="mt-2 text-xl font-black text-blue-600"><?php echo htmlspecialchars(($startDate ?? '-') . ' → ' . ($latestDate ?? '-')); ?></h3></div>
-        <div class="rounded-[1.25rem] border border-slate-100 bg-white p-5 shadow-sm"><p class="text-xs font-black uppercase tracking-wider text-slate-400">Błędy parsowania</p><h3 class="mt-2 text-3xl font-black text-amber-600"><?php echo number_format($filesFailed, 0, ',', ' '); ?></h3></div>
+        <div class="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm"><p class="text-xs font-bold uppercase tracking-wider text-slate-400">Przetworzone pliki</p><h3 class="mt-2 text-3xl font-black text-slate-900"><?php echo number_format($filesParsed, 0, ',', ' '); ?></h3></div>
+        <div class="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm"><p class="text-xs font-bold uppercase tracking-wider text-slate-400">Łącznie zdarzeń</p><h3 class="mt-2 text-3xl font-black text-red-600"><?php echo number_format($totalEvents, 0, ',', ' '); ?></h3></div>
+        <div class="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm"><p class="text-xs font-bold uppercase tracking-wider text-slate-400">Zakres danych</p><h3 class="mt-2 text-xl font-black text-blue-600"><?php echo htmlspecialchars(($startDate ?? '-') . ' → ' . ($latestDate ?? '-')); ?></h3></div>
+        <div class="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm"><p class="text-xs font-bold uppercase tracking-wider text-slate-400">Błędy parsowania</p><h3 class="mt-2 text-3xl font-black text-amber-600"><?php echo number_format($filesFailed, 0, ',', ' '); ?></h3></div>
     </section>
 
     <?php if ($filesParsed === 0): ?>
@@ -463,25 +354,157 @@ $printMode = isset($_GET['print']) && $_GET['print'] === '1';
             <p class="mt-2 text-sm text-slate-500">Wgraj raporty ZIP lub sprawdź, czy katalog <span class="font-mono">/dane/YYYY-MM-DD</span> zawiera pliki HTML.</p>
         </div>
     <?php else: ?>
-        <section class="print-grid grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <?php renderDonutCard('transferHosts', 'Top 10 hostów z największym transferem', 'Wykres kołowy + procentowy udział transferu', $topTransferHosts, 'MB', true, 'server'); ?>
-            <?php renderDonutCard('failedUsers', 'Top 10 użytkowników z błędnymi próbami logowania', 'Wykres kołowy + procentowy udział prób', $topFailedUsers, 'prób', false, 'user-x'); ?>
-            <?php renderDonutCard('attackCountries', 'Top 10 krajów źródłowych ataków', 'Wykres kołowy + procentowy udział zdarzeń', $topAttackCountries, 'zd.', false, 'globe-2'); ?>
-            <?php renderDonutCard('hours', 'Top 10 godzin z największą ilością zdarzeń', 'Wykres kołowy + procentowy udział godzin', $topHours, 'zd.', false, 'clock-3'); ?>
-            <?php renderDonutCard('ports', 'Top 10 portów', 'Wykres kołowy + tabela z procentami', $topPorts, 'zd.', false, 'unplug'); ?>
-            <?php renderDonutCard('apps', 'Top 10 aplikacji', 'Wykres kołowy + tabela z procentami', $topApps, 'zd.', false, 'boxes'); ?>
-            <?php renderDonutCard('services', 'Top 10 usług', 'Wykres kołowy + tabela z procentami', $topServices, 'zd.', false, 'cpu'); ?>
+        <section class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <div class="chart-box rounded-2xl border border-slate-100 bg-white p-6 shadow-sm"><h3 class="mb-4 text-sm font-extrabold uppercase tracking-wide text-slate-900">Top 10 hostów z największym transferem</h3><div class="chart-canvas-wrap"><canvas id="chart-transferHosts"></canvas></div><table class="mt-4 w-full"><tbody><?php renderTableRows($topTransferHosts, 'MB', true); ?></tbody></table></div>
+            <div class="chart-box rounded-2xl border border-slate-100 bg-white p-6 shadow-sm"><h3 class="mb-4 text-sm font-extrabold uppercase tracking-wide text-slate-900">Top 10 użytkowników z błędnymi próbami logowania</h3><div class="chart-canvas-wrap"><canvas id="chart-failedUsers"></canvas></div><table class="mt-4 w-full"><tbody><?php renderTableRows($topFailedUsers, 'prób'); ?></tbody></table></div>
+            <div class="chart-box rounded-2xl border border-slate-100 bg-white p-6 shadow-sm"><h3 class="mb-4 text-sm font-extrabold uppercase tracking-wide text-slate-900">Top 10 krajów źródłowych ataków</h3><div class="chart-canvas-wrap"><canvas id="chart-attackCountries"></canvas></div><table class="mt-4 w-full"><tbody><?php renderTableRows($topAttackCountries, 'zd.'); ?></tbody></table></div>
+            <div class="chart-box rounded-2xl border border-slate-100 bg-white p-6 shadow-sm"><h3 class="mb-4 text-sm font-extrabold uppercase tracking-wide text-slate-900">Top 10 godzin z największą ilością zdarzeń</h3><div class="chart-canvas-wrap"><canvas id="chart-hours"></canvas></div><table class="mt-4 w-full"><tbody><?php renderTableRows($topHours, 'zd.'); ?></tbody></table></div>
+            <div class="chart-box rounded-2xl border border-slate-100 bg-white p-6 shadow-sm"><h3 class="mb-4 text-sm font-extrabold uppercase tracking-wide text-slate-900">Top 10 portów</h3><div class="chart-canvas-wrap"><canvas id="chart-ports"></canvas></div><table class="mt-4 w-full"><tbody><?php renderTableRows($topPorts, 'zd.'); ?></tbody></table></div>
+            <div class="chart-box rounded-2xl border border-slate-100 bg-white p-6 shadow-sm"><h3 class="mb-4 text-sm font-extrabold uppercase tracking-wide text-slate-900">Top 10 aplikacji</h3><div class="chart-canvas-wrap"><canvas id="chart-apps"></canvas></div><table class="mt-4 w-full"><tbody><?php renderTableRows($topApps, 'zd.'); ?></tbody></table></div>
+            <div class="chart-box rounded-2xl border border-slate-100 bg-white p-6 shadow-sm xl:col-span-2"><h3 class="mb-4 text-sm font-extrabold uppercase tracking-wide text-slate-900">Top 10 usług</h3><div class="chart-canvas-wrap"><canvas id="chart-services"></canvas></div><table class="mt-4 w-full"><tbody><?php renderTableRows($topServices, 'zd.'); ?></tbody></table></div>
         </section>
     <?php endif; ?>
 </main>
 
 <script>
 lucide.createIcons();
-<?php if ($printMode): ?>
+const chartData = <?php echo json_encode($charts, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+const palette = ['#2563eb', '#dc2626', '#16a34a', '#f59e0b', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#475569'];
+
+const percentageLabelsPlugin = {
+    id: 'percentageLabelsPlugin',
+    afterDatasetsDraw(chart) {
+        const dataset = chart.data.datasets && chart.data.datasets[0];
+        if (!dataset || !dataset.data || dataset.data.length === 0) return;
+        const values = dataset.data.map(v => Number(v) || 0);
+        const total = values.reduce((a, b) => a + b, 0);
+        if (total <= 0) return;
+
+        const ctx = chart.ctx;
+        const meta = chart.getDatasetMeta(0);
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = '500 11px Inter, Arial, sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(15, 23, 42, 0.35)';
+        ctx.shadowBlur = 2;
+        ctx.shadowOffsetY = 1;
+
+        meta.data.forEach((arc, index) => {
+            const value = values[index];
+            const percent = total > 0 ? (value / total) * 100 : 0;
+            if (percent < 3) return;
+            const point = arc.tooltipPosition();
+            ctx.fillText(percent.toLocaleString('pl-PL', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%', point.x, point.y);
+        });
+        ctx.restore();
+    }
+};
+
+function fallbackEmptyChart(el, text) {
+    const parent = el.parentElement;
+    if (!parent) return;
+    parent.innerHTML = '<div class="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-xs font-semibold text-slate-400">' + text + '</div>';
+}
+
+function makePie(id, payload) {
+    const el = document.getElementById('chart-' + id);
+    if (!el) return;
+    if (!payload || !Array.isArray(payload.labels) || !Array.isArray(payload.values) || payload.labels.length === 0 || payload.values.length === 0) {
+        fallbackEmptyChart(el, 'Brak danych do wykresu');
+        return;
+    }
+
+    const labels = payload.labels.map(label => String(label));
+    const values = payload.values.map(value => Number(value) || 0);
+    const total = values.reduce((a, b) => a + b, 0);
+    if (total <= 0) {
+        fallbackEmptyChart(el, 'Brak danych do wykresu');
+        return;
+    }
+
+    try {
+        new Chart(el, {
+            type: 'pie',
+            data: {
+                labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: palette,
+                    borderWidth: 2,
+                    borderColor: '#ffffff',
+                    hoverOffset: 8
+                }]
+            },
+            plugins: [percentageLabelsPlugin],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 650 },
+                layout: { padding: 8 },
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            boxWidth: 10,
+                            boxHeight: 10,
+                            padding: 12,
+                            font: { size: 10, weight: '400' },
+                            color: '#475569',
+                            generateLabels(chart) {
+                                const data = chart.data;
+                                return data.labels.map((label, i) => {
+                                    const value = Number(data.datasets[0].data[i]) || 0;
+                                    const pct = total > 0 ? (value / total) * 100 : 0;
+                                    const safeLabel = String(label).length > 34 ? String(label).slice(0, 31) + '…' : String(label);
+                                    return {
+                                        text: safeLabel + ' — ' + pct.toLocaleString('pl-PL', { maximumFractionDigits: 1 }) + '%',
+                                        fillStyle: palette[i % palette.length],
+                                        strokeStyle: '#ffffff',
+                                        lineWidth: 1,
+                                        hidden: false,
+                                        index: i
+                                    };
+                                });
+                            }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(15, 23, 42, 0.94)',
+                        titleFont: { size: 12, weight: '600' },
+                        bodyFont: { size: 12, weight: '400' },
+                        padding: 10,
+                        callbacks: {
+                            label: function(ctx) {
+                                const value = Number(ctx.raw || 0);
+                                const percent = total > 0 ? (value / total) * 100 : 0;
+                                const suffix = payload.format === 'mb' ? ' MB' : ' zd.';
+                                const formattedValue = value.toLocaleString('pl-PL', { maximumFractionDigits: payload.format === 'mb' ? 1 : 0 });
+                                const formattedPercent = percent.toLocaleString('pl-PL', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+                                return ' ' + ctx.label + ': ' + formattedValue + suffix + ' (' + formattedPercent + '%)';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Błąd renderowania wykresu', id, error, payload);
+        fallbackEmptyChart(el, 'Błąd renderowania wykresu');
+    }
+}
+
+function renderAllCharts() {
+    ['transferHosts', 'failedUsers', 'attackCountries', 'hours', 'ports', 'apps', 'services'].forEach(key => makePie(key, chartData[key]));
+}
+
 window.addEventListener('load', function() {
-    setTimeout(function() { window.print(); }, 450);
+    renderAllCharts();
+    if (new URLSearchParams(window.location.search).get('print') === '1') {
+        setTimeout(() => window.print(), 900);
+    }
 });
-<?php endif; ?>
 </script>
 </body>
 </html>
