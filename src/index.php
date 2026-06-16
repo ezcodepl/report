@@ -180,10 +180,16 @@ if ($selectedFile) {
                     <span class="text-xs text-slate-400 font-medium font-mono">Status: Aktywny</span>
                 </div>
             </div>
-            <button onclick="document.getElementById('upload-modal').classList.remove('hidden')" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-colors">
-                <i data-lucide="upload-cloud" class="h-4 w-4"></i>
-                Wgraj paczkę ZIP
-            </button>
+            <div class="flex items-center gap-2">
+                <a href="stats.php" class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500">
+                    <i data-lucide="chart-pie" class="h-4 w-4"></i>
+                    Statystyki
+                </a>
+                <button onclick="document.getElementById('upload-modal').classList.remove('hidden')" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-colors">
+                    <i data-lucide="upload-cloud" class="h-4 w-4"></i>
+                    Wgraj paczkę ZIP
+                </button>
+            </div>
         </div>
     </header>
 
@@ -193,10 +199,15 @@ if ($selectedFile) {
         <aside class="w-80 border-r border-slate-200 bg-white p-6 shrink-0 hidden md:block">
             <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Archiwum Raportów</h2>
 
+            <a href="stats.php" class="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-indigo-500">
+                <i data-lucide="chart-pie" class="h-4 w-4"></i>
+                Statystyki zbiorcze
+            </a>
+
             <form action="index.php" method="GET" class="mb-4 rounded-xl border border-slate-100 bg-slate-50/70 p-3">
                 <label for="archive-date" class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     <i data-lucide="calendar-search" class="h-3.5 w-3.5 text-blue-500"></i>
-                    Przejdź do daty raportu
+                    Skocz do daty raportu
                 </label>
                 <div class="flex gap-2">
                     <input
