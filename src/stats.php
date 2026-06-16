@@ -301,6 +301,8 @@ function renderTableRows($items, $unit = 'zd.', $isTransfer = false) {
     <title>Statystyki SOC - Logsign</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
@@ -310,7 +312,19 @@ function renderTableRows($items, $unit = 'zd.', $isTransfer = false) {
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .chart-canvas-wrap { position: relative; height: 280px; width: 100%; }
         .chart-canvas-wrap canvas { display: block; width: 100% !important; height: 280px !important; }
-        @media print { .no-print { display: none !important; } .chart-canvas-wrap { height: 260px; } .chart-canvas-wrap canvas { height: 260px !important; } }
+        @page { size: A4 landscape; margin: 10mm; }
+        @media print {
+            html, body { background: #ffffff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .no-print { display: none !important; }
+            header { position: static !important; box-shadow: none !important; }
+            main { max-width: none !important; padding: 10px !important; }
+            section { break-inside: avoid; page-break-inside: avoid; }
+            .chart-box { break-inside: avoid; page-break-inside: avoid; box-shadow: none !important; border-color: #e2e8f0 !important; }
+            .chart-canvas-wrap { height: 245px !important; min-height: 245px !important; }
+            .chart-canvas-wrap canvas { height: 245px !important; max-height: 245px !important; }
+            table { break-inside: auto; }
+            tr { break-inside: avoid; page-break-inside: avoid; }
+        }
     </style>
 </head>
 <body class="text-slate-800 antialiased">
@@ -338,7 +352,7 @@ function renderTableRows($items, $unit = 'zd.', $isTransfer = false) {
     </div>
 </header>
 
-<main class="mx-auto max-w-[1700px] p-6 lg:p-8">
+<main id="soc-report-pdf" class="mx-auto max-w-[1700px] p-6 lg:p-8">
     <section class="mb-6 flex flex-col justify-between gap-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm lg:flex-row lg:items-center">
         <div>
             <h2 class="text-xl font-extrabold text-slate-950">Dashboard zbiorczy</h2>
@@ -353,9 +367,9 @@ function renderTableRows($items, $unit = 'zd.', $isTransfer = false) {
                     Ostatnie <?php echo $p; ?> dni
                 </a>
             <?php endforeach; ?>
-            <a href="stats.php?period=<?php echo (int)$period; ?>&print=1" target="_blank" class="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-slate-800">
-                <i data-lucide="file-down" class="h-4 w-4"></i> Eksportuj PDF
-            </a>
+            <button type="button" onclick="exportSocPdf()" data-html2canvas-ignore="true" class="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-red-500">
+                <i data-lucide="file-down" class="h-4 w-4"></i> Exportuj raport do PDF
+            </button>
         </div>
     </section>
 
@@ -385,10 +399,20 @@ function renderTableRows($items, $unit = 'zd.', $isTransfer = false) {
     <?php endif; ?>
 </main>
 
+<div id="pdf-export-overlay" data-html2canvas-ignore="true" class="fixed inset-0 z-[9999] hidden items-center justify-center bg-slate-950/70 backdrop-blur-sm">
+    <div class="w-[360px] rounded-3xl border border-white/10 bg-white p-7 text-center shadow-2xl">
+        <div class="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-red-600"></div>
+        <h3 class="text-lg font-extrabold text-slate-950">Generuję plik PDF...</h3>
+        <p class="mt-2 text-sm font-medium text-slate-500">Nie zamykaj tej karty. Po chwili przeglądarka pokaże zapis pliku.</p>
+    </div>
+</div>
+
 <script>
 lucide.createIcons();
 const chartData = <?php echo json_encode($charts, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 const palette = ['#2563eb', '#dc2626', '#16a34a', '#f59e0b', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#475569'];
+const chartInstances = {};
+const isPdfExportMode = new URLSearchParams(window.location.search).get('print') === '1';
 
 const percentageLabelsPlugin = {
     id: 'percentageLabelsPlugin',
@@ -444,7 +468,7 @@ function makePie(id, payload) {
     }
 
     try {
-        new Chart(el, {
+        chartInstances[id] = new Chart(el, {
             type: 'pie',
             data: {
                 labels,
@@ -460,7 +484,7 @@ function makePie(id, payload) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: { duration: 650 },
+                animation: { duration: isPdfExportMode ? 0 : 650 },
                 layout: { padding: 8 },
                 plugins: {
                     legend: {
@@ -518,10 +542,119 @@ function renderAllCharts() {
     ['transferHosts', 'failedUsers', 'attackCountries', 'hours', 'ports', 'apps', 'services'].forEach(key => makePie(key, chartData[key]));
 }
 
+function refreshChartsForPrint() {
+    Object.values(chartInstances).forEach(chart => {
+        try {
+            chart.resize();
+            chart.update('none');
+        } catch (error) {
+            console.error('Błąd odświeżania wykresu przed PDF', error);
+        }
+    });
+}
+
+function waitForStableChartsAndPrint() {
+    const fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+    fontsReady.then(() => {
+        refreshChartsForPrint();
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                refreshChartsForPrint();
+                setTimeout(() => window.print(), 350);
+            });
+        });
+    });
+}
+
+function setPdfOverlay(show) {
+    const overlay = document.getElementById('pdf-export-overlay');
+    if (!overlay) return;
+    overlay.classList.toggle('hidden', !show);
+    overlay.classList.toggle('flex', show);
+}
+
+function waitForNextPaint() {
+    return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
+async function exportSocPdf() {
+    if (!window.html2canvas || !window.jspdf || !window.jspdf.jsPDF) {
+        alert('Nie udało się załadować bibliotek PDF. Sprawdź dostęp do CDN albo połączenie z internetem.');
+        return;
+    }
+
+    const report = document.getElementById('soc-report-pdf');
+    if (!report) {
+        alert('Nie znaleziono sekcji raportu do eksportu.');
+        return;
+    }
+
+    setPdfOverlay(true);
+
+    try {
+        const fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+        await fontsReady;
+        refreshChartsForPrint();
+        await waitForNextPaint();
+        refreshChartsForPrint();
+        await new Promise(resolve => setTimeout(resolve, 250));
+
+        const canvas = await html2canvas(report, {
+            scale: 2,
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: '#f8fafc',
+            logging: false,
+            windowWidth: document.documentElement.scrollWidth,
+            windowHeight: document.documentElement.scrollHeight,
+            onclone: function(clonedDoc) {
+                const clonedReport = clonedDoc.getElementById('soc-report-pdf');
+                if (clonedReport) {
+                    clonedReport.style.maxWidth = '1700px';
+                    clonedReport.style.margin = '0 auto';
+                }
+            }
+        });
+
+        const imgData = canvas.toDataURL('image/png', 1.0);
+        const pdf = new window.jspdf.jsPDF('l', 'mm', 'a4');
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const margin = 6;
+        const imgWidth = pageWidth - margin * 2;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        const usablePageHeight = pageHeight - margin * 2;
+
+        let heightLeft = imgHeight;
+        let position = margin;
+
+        pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight, undefined, 'FAST');
+        heightLeft -= usablePageHeight;
+
+        while (heightLeft > 0) {
+            pdf.addPage();
+            position = margin - (imgHeight - heightLeft);
+            pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight, undefined, 'FAST');
+            heightLeft -= usablePageHeight;
+        }
+
+        const period = new URLSearchParams(window.location.search).get('period') || '<?php echo (int)$period; ?>';
+        const latestDate = '<?php echo preg_replace('/[^0-9\-]/', '', (string)($latestDate ?? date('Y-m-d'))); ?>' || new Date().toISOString().slice(0, 10);
+        pdf.save('raport_soc_statystyki_' + period + 'dni_' + latestDate + '.pdf');
+    } catch (error) {
+        console.error('Błąd eksportu PDF', error);
+        alert('Nie udało się wygenerować PDF. Szczegóły są w konsoli przeglądarki F12 → Console.');
+    } finally {
+        setPdfOverlay(false);
+    }
+}
+
+window.addEventListener('beforeprint', refreshChartsForPrint);
+
 window.addEventListener('load', function() {
     renderAllCharts();
-    if (new URLSearchParams(window.location.search).get('print') === '1') {
-        setTimeout(() => window.print(), 900);
+    if (isPdfExportMode) {
+        waitForStableChartsAndPrint();
     }
 });
 </script>
