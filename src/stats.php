@@ -260,16 +260,35 @@ $charts = [
 
 function renderTableRows($items, $unit = 'zd.', $isTransfer = false) {
     if (empty($items)) {
-        echo '<tr><td colspan="3" class="px-4 py-6 text-center text-xs font-semibold text-slate-400">Brak danych</td></tr>';
+        echo '<tr><td colspan="4" class="px-4 py-6 text-center text-xs font-semibold text-slate-400">Brak danych</td></tr>';
         return;
     }
+
+    $maxValue = max(array_map('floatval', array_values($items)));
+    $sumValue = array_sum(array_map('floatval', array_values($items)));
+    if ($maxValue <= 0) $maxValue = 1;
+    if ($sumValue <= 0) $sumValue = 1;
+
     $i = 1;
     foreach ($items as $label => $value) {
-        $displayValue = $isTransfer ? socFormatMb($value) : number_format((int)$value, 0, ',', ' ') . ' ' . $unit;
-        echo '<tr class="border-b border-slate-50 last:border-0">';
-        echo '<td class="w-10 px-4 py-2 text-xs font-bold text-slate-400">' . $i++ . '</td>';
-        echo '<td class="px-4 py-2 text-xs font-semibold text-slate-700"><span class="line-clamp-1" title="' . htmlspecialchars($label) . '">' . htmlspecialchars($label) . '</span></td>';
-        echo '<td class="whitespace-nowrap px-4 py-2 text-right text-xs font-extrabold text-blue-700">' . htmlspecialchars($displayValue) . '</td>';
+        $numericValue = (float)$value;
+        $percentOfTop = min(100, max(0, ($numericValue / $maxValue) * 100));
+        $percentOfTotal = ($numericValue / $sumValue) * 100;
+        $displayValue = $isTransfer ? socFormatMb($numericValue) : number_format((int)$numericValue, 0, ',', ' ') . ' ' . $unit;
+        $safeLabel = htmlspecialchars($label, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        echo '<tr class="border-b border-slate-50 last:border-0 hover:bg-slate-50/70 transition-colors">';
+        echo '<td class="w-10 px-4 py-2.5 text-xs font-bold text-slate-400">' . $i++ . '</td>';
+        echo '<td class="px-4 py-2.5 text-xs font-semibold text-slate-700">';
+        echo '<div class="mb-1 flex items-center justify-between gap-3">';
+        echo '<span class="line-clamp-1 max-w-[320px]" title="' . $safeLabel . '">' . $safeLabel . '</span>';
+        echo '<span class="shrink-0 text-[10px] font-bold text-slate-400">' . number_format($percentOfTotal, 1, ',', ' ') . '%</span>';
+        echo '</div>';
+        echo '<div class="h-2 w-full overflow-hidden rounded-full bg-slate-100">';
+        echo '<div class="h-full rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 shadow-sm" style="width: ' . number_format($percentOfTop, 2, '.', '') . '%"></div>';
+        echo '</div>';
+        echo '</td>';
+        echo '<td class="whitespace-nowrap px-4 py-2.5 text-right text-xs font-extrabold text-blue-700">' . htmlspecialchars($displayValue, ENT_QUOTES | ENT_HTML5, 'UTF-8') . '</td>';
         echo '</tr>';
     }
 }
