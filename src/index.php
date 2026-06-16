@@ -26,6 +26,11 @@ $reportType = 'transfer';
 $filterDay = isset($_GET['filter_day']) ? $_GET['filter_day'] : 'all';
 $activeIp = isset($_GET['active_ip']) ? $_GET['active_ip'] : '';
 
+$archiveDateRaw = isset($_GET['archive_date']) ? trim($_GET['archive_date']) : '';
+$archiveDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $archiveDateRaw) ? $archiveDateRaw : '';
+$archiveDateFound = false;
+$expandedDate = null;
+
 if (!function_exists('convertToMb')) {
     function convertToMb($valueString) {
         $valueString = str_replace(' ', '', $valueString);
@@ -78,11 +83,30 @@ if (file_exists($danePath)) {
     }
 }
 
-// Domyślny pierwszy plik z drzewa, jeśli żaden nie został wybrany
+// Jeśli użytkownik wybrał datę z archiwum, przenosimy znaleziony katalog na samą górę listy.
+if ($archiveDate !== '' && isset($tree[$archiveDate])) {
+    $archiveDateFound = true;
+    $selectedDateFiles = $tree[$archiveDate];
+    unset($tree[$archiveDate]);
+    $tree = [$archiveDate => $selectedDateFiles] + $tree;
+}
+
+// Domyślny pierwszy plik z drzewa, jeśli żaden nie został wybrany.
+// Po wyborze daty będzie to pierwszy raport z wybranego dnia.
 if (!$selectedFile && !empty($tree)) {
     $firstFolder = array_key_first($tree);
     $firstFile = reset($tree[$firstFolder]);
     $selectedFile = $firstFolder . '/' . $firstFile;
+}
+
+if (!empty($tree)) {
+    if ($archiveDateFound) {
+        $expandedDate = $archiveDate;
+    } elseif ($selectedFile && strpos($selectedFile, '/') !== false) {
+        $expandedDate = explode('/', $selectedFile, 2)[0];
+    } else {
+        $expandedDate = array_key_first($tree);
+    }
 }
 
 // Routing i parsowanie danych wybranego pliku HTML
@@ -167,7 +191,35 @@ if ($selectedFile) {
 
         <!-- Drzewo Archiwum Raportów (Sidebar) -->
         <aside class="w-80 border-r border-slate-200 bg-white p-6 shrink-0 hidden md:block">
-            <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">Archiwum Raportów</h2>
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Archiwum Raportów</h2>
+
+            <form action="index.php" method="GET" class="mb-4 rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                <label for="archive-date" class="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    <i data-lucide="calendar-search" class="h-3.5 w-3.5 text-blue-500"></i>
+                    Przejdź do daty raportu
+                </label>
+                <div class="flex gap-2">
+                    <input
+                        type="date"
+                        id="archive-date"
+                        name="archive_date"
+                        value="<?php echo htmlspecialchars($archiveDate); ?>"
+                        class="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    >
+                    <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-blue-500" title="Pokaż raporty z wybranej daty">
+                        <i data-lucide="search" class="h-4 w-4"></i>
+                    </button>
+                </div>
+                <?php if ($archiveDate !== '' && !$archiveDateFound): ?>
+                    <div class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+                        Nie znaleziono raportów dla daty <?php echo htmlspecialchars($archiveDate); ?>.
+                    </div>
+                <?php elseif ($archiveDateFound): ?>
+                    <div class="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800">
+                        Znaleziono datę <?php echo htmlspecialchars($archiveDate); ?> — raport jest na górze listy.
+                    </div>
+                <?php endif; ?>
+            </form>
 
             <?php if (empty($tree)): ?>
                 <div class="rounded-xl border border-dashed border-slate-200 p-6 text-center">
@@ -177,21 +229,22 @@ if ($selectedFile) {
             <?php else: ?>
                 <div class="space-y-3 max-h-[calc(100vh-10rem)] overflow-y-auto pr-1">
                     <?php foreach ($tree as $date => $files): ?>
-                        <div class="rounded-xl border border-slate-100 bg-slate-50/50 p-2">
+                        <?php $isExpandedDate = ($expandedDate === $date); ?>
+                        <div class="rounded-xl border <?php echo $isExpandedDate ? 'border-blue-100 bg-blue-50/30' : 'border-slate-100 bg-slate-50/50'; ?> p-2">
                             <div class="flex items-center justify-between p-2">
-                                <button onclick="toggleFolder('folder-<?php echo $date; ?>')" class="flex items-center gap-2 font-semibold text-slate-700 hover:text-blue-600 text-sm">
+                                <button onclick="toggleFolder('folder-<?php echo htmlspecialchars($date); ?>')" class="flex items-center gap-2 font-semibold <?php echo $isExpandedDate ? 'text-blue-700' : 'text-slate-700'; ?> hover:text-blue-600 text-sm">
                                     <i data-lucide="calendar" class="h-4 w-4 text-blue-500"></i>
-                                    <?php echo $date; ?>
+                                    <?php echo htmlspecialchars($date); ?>
                                 </button>
                                 <div class="flex items-center gap-1.5">
                                     <button onclick="confirmDeleteDir('<?php echo htmlspecialchars($date); ?>')" class="rounded-lg p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors" title="Usuń ten katalog">
                                         <i data-lucide="trash-2" class="h-4 w-4"></i>
                                     </button>
-                                    <i data-lucide="chevron-down" class="h-4 w-4 text-slate-400 transition-transform duration-200 cursor-pointer" id="icon-folder-<?php echo $date; ?>" onclick="toggleFolder('folder-<?php echo $date; ?>')"></i>
+                                    <i data-lucide="chevron-down" class="h-4 w-4 text-slate-400 transition-transform duration-200 cursor-pointer" id="icon-folder-<?php echo htmlspecialchars($date); ?>" onclick="toggleFolder('folder-<?php echo htmlspecialchars($date); ?>')" style="<?php echo $isExpandedDate ? '' : 'transform: rotate(-90deg);'; ?>"></i>
                                 </div>
                             </div>
 
-                            <div class="mt-1 space-y-1 pl-6 pr-2 pb-1" id="folder-<?php echo $date; ?>">
+                            <div class="mt-1 space-y-1 pl-6 pr-2 pb-1 <?php echo $isExpandedDate ? '' : 'hidden'; ?>" id="folder-<?php echo htmlspecialchars($date); ?>">
                                 <?php foreach ($files as $file):
                                     $filePathValue = $date . '/' . $file;
                                     $isActive = ($selectedFile === $filePathValue);
@@ -201,7 +254,7 @@ if ($selectedFile) {
                                         $isScanFile = false;
                                     }
                                 ?>
-                                    <a href="index.php?file=<?php echo urlencode($filePathValue); ?>" class="group flex items-center justify-between rounded-lg p-2 text-xs font-medium transition-all <?php echo $isActive ? 'bg-blue-50 text-blue-700' : 'text-slate-500 hover:bg-slate-100/80 hover:text-slate-900'; ?>">
+                                    <a href="index.php?archive_date=<?php echo urlencode($date); ?>&file=<?php echo urlencode($filePathValue); ?>" class="group flex items-center justify-between rounded-lg p-2 text-xs font-medium transition-all <?php echo $isActive ? 'bg-blue-50 text-blue-700' : 'text-slate-500 hover:bg-slate-100/80 hover:text-slate-900'; ?>">
                                         <span class="truncate pr-2" title="<?php echo htmlspecialchars($file); ?>">
                                             <?php echo htmlspecialchars(strlen($file) > 28 ? substr($file, 0, 25) . '...' : $file); ?>
                                         </span>
